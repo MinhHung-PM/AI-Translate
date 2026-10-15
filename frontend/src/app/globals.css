@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* Restrained enterprise palette. Brand accent is a muted indigo-blue. */
+@theme {
+  --color-brand-50: #eef3fb;
+  --color-brand-100: #d9e4f6;
+  --color-brand-500: #3a5f9e;
+  --color-brand-600: #2f4f86;
+  --color-brand-700: #263f6b;
+  --color-ink: #1f2937;
+  --color-muted: #6b7280;
+  --color-line: #e5e7eb;
+  --color-surface: #ffffff;
+  --color-canvas: #f6f7f9;
+  --font-sans: "Inter", "Noto Sans JP", "Noto Sans", "Hiragino Sans", "Yu Gothic UI", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+.wmde-markdown {
+  font-family: var(--font-sans) !important;
+  background: transparent !important;
+}
