@@ -19,6 +19,16 @@ decisions, action items, issues and risks — each traceable to the original tra
 | `docs/` | [architecture](docs/architecture.md) · [data model](docs/data-model.md) · [security](docs/security.md) · [API contract](docs/api-contract.md) · [OpenAPI](docs/openapi.json) · [WS2 contract](docs/workstream-2-integration-contract.md) · [feature matrix, limitations, backlog](docs/feature-matrix.md) |
 | `docker-compose.yml` | db, migrate (+ seed), api, worker, web |
 
+## Chạy nhanh bằng một lệnh / One-command start
+
+Cần cài và mở **Docker Desktop**, sau đó trong thư mục dự án:
+
+* macOS / Linux: `./start.sh` (dừng: `./start.sh stop`)
+* Windows (PowerShell): `.\start.ps1` (dừng: `.\start.ps1 stop`) — nếu bị chặn script:
+  `powershell -ExecutionPolicy Bypass -File .\start.ps1`
+
+Script tự tạo `.env` kèm khóa mã hóa, build, khởi động và mở <http://localhost:3000>.
+
 ## Quick start (Docker Compose)
 
 ```bash
