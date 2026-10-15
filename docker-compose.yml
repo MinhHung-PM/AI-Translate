@@ -1,0 +1,74 @@
+# Local development stack: PostgreSQL, API, background worker, web UI.
+# Redis is NOT required: background jobs use a PostgreSQL-backed queue.
+#   cp .env.example .env    # then set SECRET_ENCRYPTION_KEYS (see README)
+#   docker compose up --build
+#   open http://localhost:3000
+name: memohub
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: memohub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-memohub}
+      POSTGRES_DB: memohub
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memohub -d memohub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: ./backend
+    image: memohub-backend:local
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://memohub:${POSTGRES_PASSWORD:-memohub}@db:5432/memohub
+    command: ["sh", "-c", "alembic upgrade head && if [ \"$${SEED_DEMO_DATA:-true}\" = \"true\" ]; then python -m app.cli seed; fi"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: ./backend
+    image: memohub-backend:local
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://memohub:${POSTGRES_PASSWORD:-memohub}@db:5432/memohub
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    build: ./backend
+    image: memohub-backend:local
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://memohub:${POSTGRES_PASSWORD:-memohub}@db:5432/memohub
+      EMBEDDED_WORKER: "false"
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: memohub-web:local
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  pgdata:

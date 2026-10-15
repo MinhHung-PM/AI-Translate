@@ -1,0 +1,76 @@
+# API contract (v1)
+
+Base path `/api/v1`. Machine-readable spec: [`docs/openapi.json`](openapi.json) (also served live at
+`/api/v1/openapi.json`; Swagger UI at `/api/docs`).
+
+## Conventions
+
+* JSON in/out (except multipart uploads and file exports). Times are ISO-8601 with offsets (UTC stored).
+* Auth: session cookie `memohub_session` (HttpOnly). All non-GET requests require header
+  `X-CSRF-Token: <csrf_token from GET /auth/me>`.
+* Pagination: `?page=1&page_size=20` (max 100; transcript up to 500) → `{items, total, page, page_size}`.
+* Errors: `{"error": {"code": "...", "message": "...", "details": {...}}}` with codes
+  `not_authenticated` 401, `forbidden` 403, `not_found` 404, `conflict` 409, `payload_too_large` 413,
+  `validation_failed` 422, `rate_limited` 429 (`details.retry_after_seconds`), `provider_not_configured` 409,
+  `internal_error` 500.
+* Long-running work returns **202** with a `Job`; poll `GET /jobs/{id}` (`queued → running → succeeded|failed`,
+  `progress_done/progress_total`, `error_code/error_message`, `result`).
+
+## Endpoints
+
+| Area | Method & path | Notes |
+|---|---|---|
+| Auth | `GET /auth/me` | user, csrf_token, auth_mode, feature flags |
+| | `POST /auth/logout` | deletes session and session-only keys |
+| | `GET /auth/dev/users`, `POST /auth/dev/login` | only when `AUTH_MODE=dev` (404 otherwise) |
+| | `GET /auth/oidc/login`, `GET /auth/oidc/callback` | OIDC code flow + PKCE |
+| Users | `GET/PATCH /users/me` | |
+| Projects | `GET/POST /projects`, `GET/PATCH/DELETE /projects/{id}` | create: PM/admin; delete: admin (soft) |
+| | `GET/POST /projects/{id}/members`, `DELETE /projects/{id}/members/{user_id}` | |
+| Glossary | `GET/POST /projects/{id}/glossary`, `PATCH/DELETE /projects/{id}/glossary/{entry_id}` | manage = project manager |
+| Meetings / history | `GET /meetings` | filters `q, project_id, date_from, date_to, status, memo_status, platform, sort` |
+| | `POST /meetings`, `GET/PATCH/DELETE /meetings/{id}` | delete = soft |
+| | `GET /meetings/{id}/export?format=md\|csv\|json` | transcript + translations (transcript access required) |
+| Transcript | `POST /meetings/{id}/transcript/upload` | multipart `file` (.txt/.srt/.vtt/.json), `source_language?`, `replace?` |
+| | `POST /meetings/{id}/transcript/text` | `{text, format?, source_language?, replace?}` |
+| | `GET /meetings/{id}/transcript` | `target_language, q, status, page, page_size`; entries with translation |
+| | `GET /meetings/{id}/transcript/stats`, `GET /meetings/{id}/transcript/imports` | |
+| | `PATCH /transcript-entries/{id}` | correct source text (original kept in metadata) |
+| | `PUT /transcript-entries/{id}/translation` | user correction, marks `is_user_edited` |
+| Translation | `POST /meetings/{id}/translations` → 202 Job | `{target_language?, entry_ids?, only_failed?, force?}` (rate-limited) |
+| Live / replay | `POST /meetings/{id}/replay` → 202 LiveSession | multipart `file` or `text`, `interval_seconds`, `translate` — **demo** |
+| | `GET /meetings/{id}/live?after_sequence=` | polling feed (session + entries) |
+| | `POST /live-sessions/{id}/stop` | |
+| Memo | `GET /meetings/{id}/memo` | full structured memo incl. items, sources, permissions |
+| | `POST /meetings/{id}/memo/generate` → 202 Job | rate-limited; 409 if approved/generating |
+| | `PUT /memos/{id}` | narrative sections (summary, discussion, open_questions, next_meeting, pm_view) |
+| | `POST /memos/{id}/submit\|approve\|reject\|reopen` | approve/reject/reopen: project manager |
+| | `GET /memos/{id}/export?format=md\|html\|json` | approved memos only |
+| Items | `POST /memos/{id}/decisions\|action-items\|issues\|risks` | human-created items are `confirmed` |
+| | `PATCH/DELETE /decisions/{id}`, `/action-items/{id}`, `/issues/{id}`, `/risks/{id}` | `verification_status` confirm/reject; action owners may update `status` |
+| Action tracker | `GET /action-items` | `project_id, meeting_id, status[], priority[], verification[], owner, mine, due_from, due_to, overdue, include_rejected` |
+| Jobs | `GET /jobs/{id}`, `GET /meetings/{id}/jobs` | |
+| AI providers | `GET /providers` | catalog, capabilities, prices, storage flags |
+| | `GET/PUT /providers/configs`, `DELETE /providers/configs/{id}` | key write-only |
+| | `POST /providers/configs/{id}/default`, `DELETE /providers/configs/{id}/key`, `POST /providers/configs/{id}/test` | |
+| Usage | `GET /usage/summary` | totals, by model/operation/project/meeting, `cost_note` |
+| Dashboard | `GET /dashboard` | filters `project_id, date_from, date_to, meeting_status, memo_status, owner` |
+| Connectors | `GET /connectors` | platform integration status (`not_configured` for Teams/Zoom/Meet) |
+| Admin | `GET/POST /admin/users`, `PATCH /admin/users/{id}`, `GET /admin/users/lookup` | |
+| | `GET/POST /admin/divisions`, `GET/PUT /admin/division-assignments`, `DELETE /admin/division-assignments/{id}` | |
+| | `GET /admin/audit-events`, `GET /admin/health`, `POST /admin/retention/run` | |
+| Health | `GET /health/live`, `GET /health/ready` | unauthenticated |
+
+## JSON transcript import schema
+
+```json
+{
+  "schema_version": "1.0",
+  "language": "ja",
+  "entries": [
+    { "speaker": "田中", "start_ms": 0, "end_ms": 4000, "text": "…", "language": "ja", "metadata": {} }
+  ]
+}
+```
+
+Only `text` is required per entry; unknown keys are rejected; `end_ms >= start_ms`.
