@@ -1,0 +1,128 @@
+"""Application configuration, loaded from environment variables only.
+
+No secret has a usable default: production startup fails fast if required
+values are missing (see ``Settings.validate_for_environment``).
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Annotated, Literal
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    environment: Literal["development", "test", "production"] = "development"
+    app_name: str = "AI Meeting Translator & Memo Hub"
+
+    database_url: str = "postgresql+psycopg://memohub:memohub@localhost:5432/memohub"
+
+    # --- Authentication -------------------------------------------------
+    # "dev" lets a developer pick a seeded user without a password. It is
+    # refused at startup when environment == "production".
+    auth_mode: Literal["dev", "oidc"] = "oidc"
+    session_ttl_minutes: int = 8 * 60
+    session_cookie_name: str = "memohub_session"
+    session_cookie_secure: bool = True
+    oidc_issuer: str | None = None  # e.g. https://login.microsoftonline.com/<tenant>/v2.0
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    oidc_redirect_uri: str | None = None  # e.g. https://memohub.example.com/api/v1/auth/oidc/callback
+    oidc_post_login_redirect: str = "/"
+    oidc_default_role: Literal["member"] = "member"
+
+    # --- Secret storage -------------------------------------------------
+    # Keyring for AES-256-GCM encryption of user API keys.
+    # Format: "kid1:<base64 32 bytes>,kid0:<base64 32 bytes>" — the first key
+    # encrypts, all keys decrypt (supports rotation). Empty => the
+    # "remember API key" option is disabled.
+    secret_encryption_keys: str = ""
+    # Operators may disable persistent ("remember") storage even with a keyring.
+    allow_persistent_api_keys: bool = True
+    # SSRF guard for custom provider base URLs (see app/ai/url_safety.py).
+    allow_private_provider_urls: bool = False
+    provider_base_url_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    # --- Web ------------------------------------------------------------
+    cors_allowed_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    trusted_hosts: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
+
+    # --- Uploads / processing --------------------------------------------
+    max_upload_bytes: int = 2 * 1024 * 1024
+    max_transcript_entries: int = 5000
+    max_entry_chars: int = 4000
+    translation_chunk_max_entries: int = 20
+    translation_chunk_max_chars: int = 6000
+    memo_max_transcript_chars: int = 120_000
+    ai_output_max_attempts: int = 3
+
+    # --- Rate limiting (per user, per process) ---------------------------
+    ai_rate_limit_per_minute: int = 20
+
+    # --- Jobs ------------------------------------------------------------
+    embedded_worker: bool = False
+    worker_poll_seconds: float = 1.0
+    job_max_attempts: int = 2
+
+    # --- AI provider catalog ---------------------------------------------
+    provider_catalog_path: Path = BACKEND_ROOT / "app" / "ai" / "catalog.json"
+    enable_mock_provider: bool = True
+    ai_request_timeout_seconds: float = 60.0
+
+    # --- Retention -------------------------------------------------------
+    default_retention_days: int = 365
+
+    log_level: str = "INFO"
+
+    @field_validator("cors_allowed_origins", "trusted_hosts", "provider_base_url_allowlist", mode="before")
+    @classmethod
+    def _split_csv(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
+        return value
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
+
+    @property
+    def secret_storage_available(self) -> bool:
+        return bool(self.secret_encryption_keys.strip())
+
+    @property
+    def remember_key_supported(self) -> bool:
+        return self.secret_storage_available and self.allow_persistent_api_keys
+
+    def validate_for_environment(self) -> None:
+        """Refuse insecure combinations before the app starts serving."""
+        if not self.is_production:
+            return
+        problems: list[str] = []
+        if self.auth_mode == "dev":
+            problems.append("AUTH_MODE=dev is not allowed in production")
+        if not self.session_cookie_secure:
+            problems.append("SESSION_COOKIE_SECURE must be true in production")
+        if self.auth_mode == "oidc" and not all(
+            [self.oidc_issuer, self.oidc_client_id, self.oidc_client_secret, self.oidc_redirect_uri]
+        ):
+            problems.append("OIDC_* settings are required in production")
+        if "*" in self.trusted_hosts:
+            problems.append("TRUSTED_HOSTS must be explicit in production")
+        if self.allow_private_provider_urls:
+            problems.append("ALLOW_PRIVATE_PROVIDER_URLS must be false in production")
+        if self.enable_mock_provider:
+            problems.append("ENABLE_MOCK_PROVIDER must be false in production")
+        if problems:
+            raise RuntimeError("Insecure production configuration: " + "; ".join(problems))
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

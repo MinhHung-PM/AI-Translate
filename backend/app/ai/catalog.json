@@ -1,0 +1,45 @@
+{
+  "_comment": "Provider catalog. Prices are configuration used only to compute 'Estimated Cost' (USD per 1M tokens). Verify against the provider's current price list before relying on them.",
+  "providers": [
+    {
+      "key": "mock",
+      "display_name": "Mock provider (development / demo)",
+      "adapter": "mock",
+      "requires_api_key": false,
+      "allow_custom_base_url": false,
+      "allow_custom_model": false,
+      "dev_only": true,
+      "capabilities": ["translation", "memo_generation", "structured_output"],
+      "models": [
+        { "id": "mock-deterministic", "label": "Deterministic mock", "input_per_1m": 0, "output_per_1m": 0 }
+      ]
+    },
+    {
+      "key": "openai",
+      "display_name": "OpenAI",
+      "adapter": "openai",
+      "default_base_url": "https://api.openai.com/v1",
+      "requires_api_key": true,
+      "allow_custom_base_url": false,
+      "allow_custom_model": true,
+      "dev_only": false,
+      "capabilities": ["translation", "memo_generation", "structured_output", "model_discovery"],
+      "models": [
+        { "id": "gpt-4.1-mini", "label": "GPT-4.1 mini", "input_per_1m": 0.4, "output_per_1m": 1.6 },
+        { "id": "gpt-4.1", "label": "GPT-4.1", "input_per_1m": 2.0, "output_per_1m": 8.0 },
+        { "id": "gpt-4o-mini", "label": "GPT-4o mini", "input_per_1m": 0.15, "output_per_1m": 0.6 }
+      ]
+    },
+    {
+      "key": "openai_compatible",
+      "display_name": "OpenAI-compatible endpoint",
+      "adapter": "openai",
+      "requires_api_key": true,
+      "allow_custom_base_url": true,
+      "allow_custom_model": true,
+      "dev_only": false,
+      "capabilities": ["translation", "memo_generation"],
+      "models": []
+    }
+  ]
+}

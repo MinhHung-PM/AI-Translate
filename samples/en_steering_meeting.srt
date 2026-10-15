@@ -1,0 +1,23 @@
+1
+00:00:01,000 --> 00:00:06,000
+Sarah Johnson: Thanks everyone. The goal today is to confirm the release plan for version 2.0.
+
+2
+00:00:06,500 --> 00:00:12,000
+Kenji Watanabe: We agreed to move the go-live date to November 15 because of the security audit.
+
+3
+00:00:12,500 --> 00:00:18,000
+Sarah Johnson: Kenji will prepare the updated migration plan by next Friday.
+
+4
+00:00:18,500 --> 00:00:25,000
+Kenji Watanabe: There is a risk that the data migration takes longer than the planned 6-hour window.
+
+5
+00:00:25,500 --> 00:00:31,000
+Linh Tran: We still have an open issue: the payment API returns error 502 under load.
+
+6
+00:00:31,500 --> 00:00:36,000
+Sarah Johnson: Maybe we should add another load test round?

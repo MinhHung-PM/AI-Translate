@@ -1,0 +1,7 @@
+[00:00:05] Trần Minh: Hôm nay chúng ta rà soát tiến độ sprint 14 của dự án ALPHA.
+[00:00:20] Nguyễn Văn An: Module xuất hàng đã xong 80%, còn phần tích hợp API với hệ thống WMS.
+[00:00:41] Trần Minh: Chúng ta thống nhất deploy bản v1.4.0 lên môi trường staging vào thứ Sáu tuần sau.
+[00:01:02] Lê Thu Hà: Có vấn đề là khách hàng chưa phản hồi về tài liệu đặc tả màn hình tìm kiếm.
+[00:01:25] Trần Minh: Chị Hà sẽ gửi email nhắc khách hàng trước 20/10.
+[00:01:40] Nguyễn Văn An: Rủi ro là nếu API của WMS thay đổi thì chúng ta sẽ bị chậm khoảng 3 ngày.
+[00:02:05] Lê Thu Hà: Có nên bổ sung thêm test case cho trường hợp tồn kho âm không?
