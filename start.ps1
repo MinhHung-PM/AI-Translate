@@ -21,13 +21,23 @@ if (-not (Test-Path .env)) {
   $bytes = New-Object byte[] 32
   [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
   $key = [Convert]::ToBase64String($bytes)
-  (Get-Content .env.example) -replace '^SECRET_ENCRYPTION_KEYS=.*', "SECRET_ENCRYPTION_KEYS=kdev:$key" | Set-Content .env -Encoding utf8
+  $lines = (Get-Content .env.example) -replace '^SECRET_ENCRYPTION_KEYS=.*', "SECRET_ENCRYPTION_KEYS=kdev:$key"
+  [System.IO.File]::WriteAllText((Join-Path $PSScriptRoot ".env"), (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
   Write-Host "Da tao file .env (kem khoa ma hoa)"
+}
+
+# .env must use LF line endings and no BOM: a Windows CRLF would corrupt every value (e.g. "false`r").
+$envPath = Join-Path $PSScriptRoot ".env"
+$raw = [System.IO.File]::ReadAllText($envPath)
+$clean = $raw.TrimStart([char]0xFEFF) -replace "`r", ""
+if ($clean -ne $raw) {
+  [System.IO.File]::WriteAllText($envPath, $clean, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host "Da chuan hoa file .env (CRLF -> LF)"
 }
 
 Write-Host "Dang build va khoi dong (lan dau co the mat 3-10 phut)..."
 docker compose @files up --build -d
-if ($LASTEXITCODE -ne 0) { Write-Host "Loi khi khoi dong. Xem: docker compose logs --tail=50"; exit 1 }
+if ($LASTEXITCODE -ne 0) { Write-Host "Loi khi khoi dong. Xem: docker compose logs migrate api --tail=50"; exit 1 }
 
 Write-Host "Cho ung dung san sang..."
 for ($i = 0; $i -lt 120; $i++) {

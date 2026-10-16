@@ -21,6 +21,12 @@ if [ ! -f .env ]; then
   echo "✅ Đã tạo file .env (kèm khóa mã hóa)"
 fi
 
+# .env must use LF line endings: a Windows CRLF ("\r") would corrupt every value (e.g. "false\r").
+if grep -q $'\r' .env 2>/dev/null; then
+  sed -i.bak 's/\r$//' .env && rm -f .env.bak
+  echo "✅ Đã chuẩn hóa xuống dòng trong .env (CRLF → LF)"
+fi
+
 echo "⏳ Đang build và khởi động (lần đầu có thể mất 3–10 phút)…"
 "${COMPOSE[@]}" up --build -d
 
