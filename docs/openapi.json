@@ -5081,6 +5081,114 @@
     }
    }
   },
+  "/api/v1/audio-sessions/{session_id}/realtime-token": {
+   "post": {
+    "tags": [
+     "audio"
+    ],
+    "summary": "Create Realtime Token",
+    "description": "Short-lived OpenAI client secret for one source's streaming caption\nconnection (the user's API key never leaves the server).",
+    "operationId": "create_realtime_token_api_v1_audio_sessions__session_id__realtime_token_post",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Session Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RealtimeTokenIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RealtimeTokenOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/audio-sessions/{session_id}/segments": {
+   "post": {
+    "tags": [
+     "audio"
+    ],
+    "summary": "Post Realtime Segment",
+    "description": "A final utterance recognised by the streaming session → stored and translated.",
+    "operationId": "post_realtime_segment_api_v1_audio_sessions__session_id__segments_post",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Session Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RealtimeSegmentIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChunkOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/v1/audio-sessions/{session_id}/stop": {
    "post": {
     "tags": [
@@ -5792,10 +5900,40 @@
       "minItems": 1,
       "title": "Sources"
      },
+     "languages": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "enum": [
+          "ja",
+          "vi",
+          "en"
+         ]
+        },
+        "type": "array",
+        "maxItems": 3,
+        "minItems": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Languages"
+     },
      "translate": {
       "type": "boolean",
       "title": "Translate",
       "default": true
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "streaming",
+       "chunked"
+      ],
+      "title": "Mode",
+      "default": "streaming"
      },
      "consent_confirmed": {
       "type": "boolean",
@@ -10255,6 +10393,118 @@
      "remember_key_supported"
     ],
     "title": "ProviderSettingsOut"
+   },
+   "RealtimeSegmentIn": {
+    "properties": {
+     "source_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$",
+      "title": "Source Id"
+     },
+     "item_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_\\-:.]{1,120}$",
+      "title": "Item Id"
+     },
+     "text": {
+      "type": "string",
+      "maxLength": 5000,
+      "title": "Text"
+     },
+     "offset_ms": {
+      "type": "integer",
+      "maximum": 86400000.0,
+      "minimum": 0.0,
+      "title": "Offset Ms"
+     },
+     "duration_ms": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 3600000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Duration Ms"
+     },
+     "model": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     },
+     "speaker": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Speaker"
+     }
+    },
+    "type": "object",
+    "required": [
+     "source_id",
+     "item_id",
+     "text",
+     "offset_ms"
+    ],
+    "title": "RealtimeSegmentIn"
+   },
+   "RealtimeTokenIn": {
+    "properties": {
+     "source_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$",
+      "title": "Source Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "source_id"
+    ],
+    "title": "RealtimeTokenIn"
+   },
+   "RealtimeTokenOut": {
+    "properties": {
+     "client_secret": {
+      "type": "string",
+      "title": "Client Secret"
+     },
+     "expires_at": {
+      "type": "integer",
+      "title": "Expires At"
+     },
+     "model": {
+      "type": "string",
+      "title": "Model"
+     },
+     "calls_url": {
+      "type": "string",
+      "title": "Calls Url"
+     }
+    },
+    "type": "object",
+    "required": [
+     "client_secret",
+     "expires_at",
+     "model",
+     "calls_url"
+    ],
+    "title": "RealtimeTokenOut"
    },
    "ReviewIn": {
     "properties": {

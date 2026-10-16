@@ -50,6 +50,17 @@ class ChunkOut(BaseModel):
     note: str | None
 
 
+class RealtimeTokenIn(BaseModel):
+    source_id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
+
+
+class RealtimeTokenOut(BaseModel):
+    client_secret: str
+    expires_at: int
+    model: str
+    calls_url: str
+
+
 class SpeakerRename(BaseModel):
     display_name: str = Field(min_length=1, max_length=200)
 
@@ -137,6 +148,42 @@ def post_audio_chunk(
         chunk_seq=chunk_seq,
         offset_ms=offset_ms,
         wav_bytes=data,
+    )
+    for e in outcome.entries:
+        db.refresh(e)
+    return ChunkOut(
+        entries=[entry_out(e, meeting.target_language) for e in outcome.entries],
+        duplicate=outcome.duplicate,
+        note=outcome.note,
+    )
+
+
+@router.post("/audio-sessions/{session_id}/realtime-token", response_model=RealtimeTokenOut)
+def create_realtime_token(session_id: uuid.UUID, body: RealtimeTokenIn, auth: AudioAuth, db: DB) -> RealtimeTokenOut:
+    """Short-lived OpenAI client secret for one source's streaming caption
+    connection (the user's API key never leaves the server)."""
+    live, meeting = _load(db, auth, session_id, edit=True)
+    if live.created_by_id != auth.user.id:
+        raise Forbidden("Only the user who started the capture can stream audio to it")
+    token = audio.realtime_token(
+        db, live=live, meeting=meeting, user_id=auth.user.id, session_id=auth.session.id, source_id=body.source_id
+    )
+    return RealtimeTokenOut(
+        client_secret=token.value,
+        expires_at=token.expires_at,
+        model=token.model,
+        calls_url="https://api.openai.com/v1/realtime/calls",
+    )
+
+
+@router.post("/audio-sessions/{session_id}/segments", response_model=ChunkOut)
+def post_realtime_segment(session_id: uuid.UUID, body: audio.RealtimeSegmentIn, auth: AudioAuth, db: DB) -> ChunkOut:
+    """A final utterance recognised by the streaming session → stored and translated."""
+    live, meeting = _load(db, auth, session_id, edit=True)
+    if live.created_by_id != auth.user.id:
+        raise Forbidden("Only the user who started the capture can send audio to it")
+    outcome = audio.ingest_realtime_segment(
+        db, live=live, meeting=meeting, user_id=auth.user.id, session_id=auth.session.id, body=body
     )
     for e in outcome.entries:
         db.refresh(e)

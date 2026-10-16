@@ -4,6 +4,20 @@
 API key). Hợp đồng API được lấy từ đặc tả chính thức `openai/openai-openapi`; mọi test dùng HTTP giả lập
 hoặc bộ nhận dạng MOCK.
 
+## Hai chế độ
+
+| | **Chữ chạy theo lời nói** (mặc định) | **Theo câu** |
+|---|---|---|
+| Cách chạy | Trình duyệt truyền âm thanh liên tục tới **OpenAI Realtime** qua WebRTC (`gpt-live-transcribe`, `languages` + `keywords`; tự lùi về `gpt-4o-transcribe`) | Cắt câu trong trình duyệt → gửi từng câu lên máy chủ |
+| Chữ hiện | **Ngay khi đang nói** (từng mảnh vài trăm ms); câu hoàn chỉnh được lưu + dịch khi dứt câu | Sau khi dứt câu (+ vài giây) |
+| Tách người nói (âm thanh cuộc họp) | Dùng nhãn `speaker` nếu OpenAI gửi sự kiện `transcription.segment`; không có thì để trống | Có, bằng mẫu giọng (≤ 4 người đã biết) |
+| Bảo mật | Máy chủ cấp **client secret tạm thời** (hết hạn 10 phút) — API key không rời máy chủ; âm thanh đi thẳng trình duyệt → OpenAI | Âm thanh đi qua máy chủ Memo Hub |
+| MOCK (không có OpenAI key) | Không hỗ trợ → tự chuyển sang "Theo câu" | Có |
+
+Chế độ streaming: CSP `connect-src` cho phép thêm `https://api.openai.com` (chỉ để gửi WebRTC offer).
+Kiểm chứng: `e2e/audio-streaming.spec.ts` dùng một **peer WebRTC giả** đóng vai OpenAI (bắt tay thật trong
+Chromium, sự kiện delta/completed theo đặc tả); chưa kiểm chứng với OpenAI thật.
+
 ## Hệ thống làm gì
 
 Màn hình **Trực tiếp / Phát lại → Thu âm trực tiếp** cho phép chọn các nguồn âm thanh trên máy tính, nhận
@@ -68,6 +82,8 @@ Thời gian người nói dứt câu (VAD chờ 0,65 s im lặng) + nhận dạn
 | `STT_MODEL` | `gpt-4o-transcribe-diarize` | model nhận dạng + tách người nói (âm thanh cuộc họp) |
 | `STT_TEXT_MODEL` / `STT_TEXT_FALLBACK_MODEL` | `gpt-transcribe` / `gpt-4o-transcribe` | model cho nguồn một người nói |
 | `AUDIO_MIN_RMS` | `0.004` | ngưỡng âm lượng tối thiểu để gửi đi nhận dạng |
+| `STT_REALTIME_MODEL` / `STT_REALTIME_FALLBACK_MODEL` | `gpt-live-transcribe` / `gpt-4o-transcribe` | chế độ chữ chạy |
+| `STT_REALTIME_TOKEN_TTL_SECONDS` | `600` | thời hạn client secret tạm thời |
 | `STT_TIMEOUT_SECONDS` | `60` | |
 | `AUDIO_CHUNK_MAX_SECONDS` / `AUDIO_CHUNK_MAX_BYTES` | `30` / `2000000` | giới hạn mỗi đoạn |
 | `AUDIO_MAX_SOURCES` | `4` | số nguồn mỗi phiên |

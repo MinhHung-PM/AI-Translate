@@ -131,6 +131,9 @@ Audio is processed in memory and never stored; only short per-speaker voice refe
 user who started a capture can post audio to it. Chunks are size/duration/format-validated and
 rate-limited. Audio and voice references are sent to OpenAI with the user's own key; nothing else. The web
 `Permissions-Policy` allows `microphone` and `display-capture` for the app's own origin only.
+Streaming captions: the server mints a 10-minute OpenAI Realtime **client secret** per source; the browser
+uses only that ephemeral key to open a WebRTC connection to OpenAI (CSP `connect-src` adds
+`https://api.openai.com`). The user's API key never reaches the browser; audio flows browser → OpenAI.
 
 ## Logging
 

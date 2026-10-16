@@ -172,7 +172,7 @@ export interface LiveSession {
   reconnect_count?: number;
   last_event_at?: string | null;
   status_message?: string | null;
-  capture_config?: { sources: AudioSourceConfig[]; translate: boolean; stt_model: string } | null;
+  capture_config?: { sources: AudioSourceConfig[]; translate: boolean; stt_model: string; mode?: "streaming" | "chunked"; languages?: Language[] } | null;
   entries_total: number;
   entries_emitted: number;
   started_at: string;

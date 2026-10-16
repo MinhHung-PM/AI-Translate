@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Alert, Badge, Button, Card, Checkbox, Input } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
+import { RealtimeCaptionSource, type CaptionState, type RealtimeToken } from "@/lib/audio/realtime";
+import type { FinalUtterance } from "@/lib/audio/realtime-events";
 import { SourceCapture, listMicrophones, openDisplayAudio, openMicrophone, unlockDeviceLabels, type SourceKind } from "@/lib/audio/capture";
 import type { Utterance } from "@/lib/audio/segmenter";
 import { encodeWav } from "@/lib/audio/wav";
@@ -76,12 +78,18 @@ export function AudioCapturePanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Streaming captions: words appear while speaking (OpenAI Realtime). Off = one request per sentence.
+  const [streamingWanted, setStreamingWanted] = useState(true);
+  const [interim, setInterim] = useState<Record<string, string>>({});
+  const [conn, setConn] = useState<Record<string, CaptionState>>({});
 
   const captures = useRef(new Map<string, SourceCapture>());
   const queues = useRef(new Map<string, Utterance[]>());
   const seqs = useRef(new Map<string, number>());
   const pumping = useRef(new Set<string>());
   const counters = useRef(new Map<string, SourceStats>());
+  const realtime = useRef(new Map<string, RealtimeCaptionSource>());
+  const finals = useRef(new Map<string, Promise<void>>());
 
   // Client-only capability check (server snapshot is optimistic to avoid a hydration mismatch).
   const isSupported = useSyncExternalStore(noopSubscribe, supported, () => true);
@@ -122,9 +130,12 @@ export function AudioCapturePanel({
     };
     window.addEventListener("beforeunload", warn);
     const caps = captures.current;
+    const rts = realtime.current;
     const sid = sessionId;
     return () => {
       window.removeEventListener("beforeunload", warn);
+      rts.forEach((r) => r.stop());
+      rts.clear();
       if (caps.size) {
         caps.forEach((c) => void c.stop());
         caps.clear();
@@ -217,6 +228,60 @@ export function AudioCapturePanel({
     }
   }
 
+  function postFinal(sid: string, sourceId: string, u: FinalUtterance, model: string) {
+    const c = counters.current.get(sourceId);
+    const prev = finals.current.get(sourceId) ?? Promise.resolve();
+    const next = prev.then(async () => {
+      try {
+        const r = await api.post<AudioChunkResult>(`/audio-sessions/${sid}/segments`, {
+          source_id: sourceId,
+          item_id: u.itemId.replace(/[^A-Za-z0-9_\-:.]/g, "_").slice(0, 120),
+          text: u.text.slice(0, 5000),
+          offset_ms: u.startMs,
+          duration_ms: u.durationMs,
+          model: model || null,
+          speaker: u.speaker,
+        });
+        if (c) {
+          c.sent += 1;
+          c.lastError = null;
+        }
+        if (r.note) setNote(r.note);
+        if (r.entries.length) onChanged();
+      } catch (err) {
+        if (c) {
+          c.errors += 1;
+          c.lastError = errorMessage(err);
+        }
+      }
+    });
+    finals.current.set(sourceId, next);
+  }
+
+  async function startStreaming(sid: string, p: PickedSource, stream: MediaStream, t0: number) {
+    const getToken = () => api.post<RealtimeToken>(`/audio-sessions/${sid}/realtime-token`, { source_id: p.id });
+    let rt: RealtimeCaptionSource | null = null;
+    rt = new RealtimeCaptionSource(
+      stream,
+      getToken,
+      {
+        onInterim: (_itemId, text) => setInterim((prev) => ({ ...prev, [p.id]: text })),
+        onFinal: (u) => postFinal(sid, p.id, u, rt?.model ?? ""),
+        onError: (msg) => {
+          const c = counters.current.get(p.id);
+          if (c) {
+            c.errors += 1;
+            c.lastError = msg;
+          }
+        },
+      },
+      () => performance.now() - t0,
+      (state) => setConn((prev) => ({ ...prev, [p.id]: state })),
+    );
+    realtime.current.set(p.id, rt);
+    await rt.start();
+  }
+
   async function start() {
     if (!picked.length) return setError(t.audio.needSource);
     setBusy(true);
@@ -227,26 +292,34 @@ export function AudioCapturePanel({
         sources: picked.map((p) => ({ id: p.id, kind: p.kind, label: p.label.trim() || p.id, single_speaker: p.singleSpeaker })),
         translate,
         languages: langs,
+        mode: streamingWanted ? "streaming" : "chunked",
         consent_confirmed: consent,
       });
       const sid = res.session.id;
+      const streaming = res.session.capture_config?.mode === "streaming";
+      if (streamingWanted && !streaming) setNote(t.audio.streamingUnavailable);
       const t0 = performance.now();
       for (const p of picked) {
         const stream = p.stream ?? (await openMicrophone(p.deviceId!));
         queues.current.set(p.id, []);
         seqs.current.set(p.id, 0);
         counters.current.set(p.id, { level: 0, queued: 0, sent: 0, errors: 0, lastError: null });
+        // In streaming mode the local segmenter only drives the level meter.
         const cap = new SourceCapture(stream, (u) => {
+          if (streaming) return;
           queues.current.get(p.id)?.push(u);
           void pump(sid, p.id);
         });
         await cap.start(t0);
         captures.current.set(p.id, cap);
+        if (streaming) await startStreaming(sid, p, stream, t0);
       }
       setSessionId(sid);
       setSpeakers(res.speakers);
       onChanged();
     } catch (err) {
+      realtime.current.forEach((r) => r.stop());
+      realtime.current.clear();
       captures.current.forEach((c) => void c.stop());
       captures.current.clear();
       setError(mediaError(err));
@@ -260,6 +333,11 @@ export function AudioCapturePanel({
     setBusy(true);
     const sid = sessionId;
     try {
+      realtime.current.forEach((r) => r.stop());
+      realtime.current.clear();
+      await Promise.race([Promise.all([...finals.current.values()]), sleep(15000)]);
+      finals.current.clear();
+      setInterim({});
       await Promise.all([...captures.current.values()].map((c) => c.stop()));
       captures.current.clear();
       for (const id of queues.current.keys()) void pump(sid, id);
@@ -378,6 +456,8 @@ export function AudioCapturePanel({
             </section>
 
             <div className="space-y-2">
+              <Checkbox label={t.audio.streaming} checked={streamingWanted} onChange={(e) => setStreamingWanted(e.target.checked)} data-testid="audio-streaming" />
+              <p className="-mt-1 ml-6 text-xs text-muted">{streamingWanted ? t.audio.streamingHint : t.audio.chunkedHint}</p>
               <Checkbox label={t.audio.translate} checked={translate} onChange={(e) => setTranslate(e.target.checked)} />
               <Checkbox label={t.audio.consent} checked={consent} onChange={(e) => setConsent(e.target.checked)} data-testid="audio-consent" />
             </div>
@@ -402,11 +482,26 @@ export function AudioCapturePanel({
                       {t.audio.sent}: <b data-testid={`sent-${p.id}`}>{s?.sent ?? 0}</b> · {t.audio.queued}: {s?.queued ?? 0}
                       {s?.errors ? ` · ${t.audio.errors}: ${s.errors}` : ""}
                     </span>
+                    {conn[p.id] && <Badge tone={conn[p.id] === "connected" ? "success" : conn[p.id] === "failed" ? "danger" : "warning"}>{t.audio.conn[conn[p.id]]}</Badge>}
                     {s?.lastError && <span className="text-xs text-red-700">{s.lastError}</span>}
                   </li>
                 );
               })}
             </ul>
+            {Object.values(interim).some(Boolean) && (
+              <div className="rounded-md border border-sky-200 bg-sky-50 p-3" data-testid="interim-captions" aria-live="polite">
+                <p className="mb-1 text-xs font-medium text-sky-900">{t.audio.speakingNow}</p>
+                {picked
+                  .filter((p) => interim[p.id])
+                  .map((p) => (
+                    <p key={p.id} className="text-base text-ink">
+                      <span className="mr-2 text-xs font-medium text-muted">{p.label}:</span>
+                      {interim[p.id]}
+                      <span className="ml-0.5 animate-pulse">▍</span>
+                    </p>
+                  ))}
+              </div>
+            )}
             {lagging && <Alert tone="warning">{t.audio.lag}</Alert>}
             <Button variant="danger" onClick={() => void stop()} loading={busy} data-testid="stop-audio">
               {t.audio.stop}

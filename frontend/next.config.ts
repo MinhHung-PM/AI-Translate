@@ -13,7 +13,8 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  // OpenAI Realtime: the browser POSTs its WebRTC offer with a short-lived client secret (live captions).
+  "connect-src 'self' https://api.openai.com",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",

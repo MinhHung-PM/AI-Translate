@@ -63,6 +63,9 @@ class AudioSessionIn(BaseModel):
     # Languages that may be spoken (constrains recognition). Default: the meeting's languages.
     languages: list[Literal["ja", "vi", "en"]] | None = Field(default=None, min_length=1, max_length=3)
     translate: bool = True
+    # streaming = words appear while speaking (OpenAI Realtime over WebRTC);
+    # chunked = one request per utterance (supports voice-reference speaker tracking).
+    mode: Literal["streaming", "chunked"] = "streaming"
     consent_confirmed: bool
 
 
@@ -150,6 +153,8 @@ def start_session(
             "sources": [s.model_dump() for s in body.sources],
             "translate": body.translate,
             "languages": languages or ["ja", "vi", "en"],
+            # Streaming needs a real provider; the MOCK only supports chunked mode.
+            "mode": "chunked" if stt.is_mock else body.mode,
             "stt_model": stt.model,
             "consent_confirmed_at": utcnow().isoformat(),
         },
@@ -493,6 +498,161 @@ def _keywords(db: Session, meeting: Meeting) -> list[str]:
         if w and w not in out:
             out.append(w)
     return out[:50]
+
+
+# ---- streaming (OpenAI Realtime) ------------------------------------------------
+
+
+def realtime_token(
+    db: Session,
+    *,
+    live: LiveSession,
+    meeting: Meeting,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    source_id: str,
+) -> Any:
+    from app.audio.realtime import create_transcription_token
+
+    settings = get_settings()
+    if live.connector != CONNECTOR or live.status not in ACTIVE:
+        raise Conflict("This audio capture session is not running")
+    config = live.capture_config or {}
+    if config.get("mode") != "streaming":
+        raise Conflict("This session does not use streaming captions")
+    source = source_config(live, source_id)
+    stt, _ = resolve_stt(db, user_id, session_id)
+    creds = getattr(stt, "_creds", None)
+    if stt.is_mock or creds is None:
+        raise ProviderNotConfigured("Streaming captions need an OpenAI API key (AI Settings).")
+    try:
+        token = create_transcription_token(
+            creds,
+            languages=list(config.get("languages") or []),
+            keywords=_keywords(db, meeting),
+            far_field=source.get("kind") != "microphone",
+            model=settings.stt_realtime_model,
+            fallback_model=settings.stt_realtime_fallback_model,
+            ttl_seconds=settings.stt_realtime_token_ttl_seconds,
+            timeout_s=settings.stt_timeout_seconds,
+        )
+    except ProviderError as err:
+        live.status_message = f"Live caption error: {err.message}"
+        db.commit()
+        raise SpeechToTextFailed(
+            err.message, details={"provider_code": err.code.value, "retryable": err.retryable}
+        ) from None
+    live.last_event_at = utcnow()
+    live.status_message = None
+    db.commit()
+    return token
+
+
+class RealtimeSegmentIn(BaseModel):
+    source_id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
+    item_id: str = Field(pattern=r"^[A-Za-z0-9_\-:.]{1,120}$")
+    text: str = Field(max_length=5000)
+    offset_ms: int = Field(ge=0, le=86_400_000)
+    duration_ms: int | None = Field(default=None, ge=0, le=3_600_000)
+    model: str | None = Field(default=None, max_length=64)
+    speaker: str | None = Field(default=None, max_length=64)  # provider label from segment events
+
+
+def _streaming_profile(db: Session, live: LiveSession, source_id: str, label: str) -> AudioSpeakerProfile:
+    profile = db.scalar(
+        select(AudioSpeakerProfile).where(
+            AudioSpeakerProfile.live_session_id == live.id,
+            AudioSpeakerProfile.source_id == source_id,
+            AudioSpeakerProfile.provider_label == label,
+        )
+    )
+    if profile is None:
+        profile = _new_profile(db, live, source_id, None)
+        profile.provider_label = label
+    return profile
+
+
+def ingest_realtime_segment(
+    db: Session,
+    *,
+    live: LiveSession,
+    meeting: Meeting,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    body: RealtimeSegmentIn,
+) -> ChunkOutcome:
+    """Store one final utterance recognised by the browser's Realtime session."""
+    if live.connector != CONNECTOR or live.status not in ACTIVE:
+        raise Conflict("This audio capture session is not running")
+    config = live.capture_config or {}
+    if config.get("mode") != "streaming":
+        raise Conflict("This session does not use streaming captions")
+    source = source_config(live, body.source_id)
+    text_value = clean_text(body.text)
+    if not text_value:
+        return ChunkOutcome()
+    chunk_ref = f"{body.source_id}:rt:{body.item_id}"
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"{live.id}:{body.source_id}"})
+    existing = db.scalars(
+        select(TranscriptEntry).where(
+            TranscriptEntry.meeting_id == meeting.id,
+            TranscriptEntry.source_metadata["live_session_id"].astext == str(live.id),
+            TranscriptEntry.source_metadata["audio_chunk"].astext == chunk_ref,
+        )
+    ).all()
+    if existing:
+        return ChunkOutcome(entries=list(existing), duplicate=True)
+
+    settings = get_settings()
+    model = body.model or settings.stt_realtime_model
+    seconds = round((body.duration_ms or 0) / 1000, 2)
+    ctx = UsageContext(user_id, meeting.project_id, meeting.id, None, "openai", model, "byok")
+    rec = DbUsageMeter(db).record(
+        ctx, "speech_to_text", TokenUsage(reported_by_provider=False), duration_ms=0, success=True
+    )
+    rec.audio_seconds = seconds or None
+    rec.estimated_cost_usd = stt_cost("openai", model, seconds) if seconds else None
+
+    profile: AudioSpeakerProfile | None = None
+    if source.get("single_speaker"):
+        speaker_name: str | None = source["label"]
+    elif body.speaker:
+        profile = _streaming_profile(db, live, body.source_id, body.speaker)
+        profile.segments += 1
+        profile.last_active_at = utcnow()
+        speaker_name = profile.display_name
+    else:
+        speaker_name = None  # no speaker information from the provider: never invented
+    event = CanonicalEvent(
+        provider=CONNECTOR,
+        provider_meeting_id=f"audio:{live.id}",
+        entry_id=f"{live.id}:{chunk_ref}",
+        speaker_id=profile.speaker_key if profile else None,
+        speaker_display_name=speaker_name,
+        start_timestamp_ms=body.offset_ms,
+        end_timestamp_ms=body.offset_ms + body.duration_ms if body.duration_ms else None,
+        original_text=text_value,
+        source_metadata={
+            "live_session_id": str(live.id),
+            "audio_chunk": chunk_ref,
+            "audio_source_id": body.source_id,
+            "audio_source_kind": source.get("kind"),
+            "audio_speaker_key": profile.speaker_key if profile else None,
+            "stt_model": model,
+            "streaming": True,
+        },
+    )
+    entry, created = ingest_event(db, meeting, event)
+    outcome = ChunkOutcome(entries=[entry] if entry is not None and created else [])
+    live.entries_emitted += len(outcome.entries)
+    live.entries_total = live.entries_emitted
+    live.last_event_at = utcnow()
+    db.commit()
+    if outcome.entries and config.get("translate", True):
+        outcome.note = translate_now(
+            db, live=live, meeting=meeting, user_id=user_id, session_id=session_id, entries=outcome.entries
+        )
+    return outcome
 
 
 def list_speakers(db: Session, live: LiveSession) -> list[AudioSpeakerProfile]:

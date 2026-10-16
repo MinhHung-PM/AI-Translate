@@ -30,6 +30,8 @@ class AudioSpeakerProfile(UUIDPk, Base):
     ordinal: Mapped[int] = mapped_column(Integer)
     display_name: Mapped[str] = mapped_column(String(200))
     encrypted_reference: Mapped[str | None] = mapped_column(Text)
+    # Streaming mode: the provider's own speaker label (e.g. "spk_1") mapped to this profile.
+    provider_label: Mapped[str | None] = mapped_column(String(64))
     segments: Mapped[int] = mapped_column(Integer, default=0)
     last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

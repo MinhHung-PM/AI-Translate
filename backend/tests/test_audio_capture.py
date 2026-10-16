@@ -406,3 +406,131 @@ def test_wav_parsing_and_slicing():
     assert parse_wav(audio.to_wav(), max_seconds=30).frames == audio.frames
     with pytest.raises(ValidationFailed):
         parse_wav(make_wav(2.0, rate=96000), max_seconds=30)
+
+
+# ---- streaming captions (OpenAI Realtime; HTTP mocked) -------------------------
+
+
+class FakeRealtime:
+    def __init__(self) -> None:
+        self.bodies: list[dict[str, Any]] = []
+        self.live_model_available = True
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/realtime/client_secrets"
+        assert request.headers["authorization"] == f"Bearer {OPENAI_KEY}"
+        body = json.loads(request.content)
+        self.bodies.append(body)
+        model = body["session"]["audio"]["input"]["transcription"]["model"]
+        if model == "gpt-live-transcribe" and not self.live_model_available:
+            return httpx.Response(400, json={"error": {"message": "Invalid model: gpt-live-transcribe"}})
+        return httpx.Response(200, json={"value": "ek_test_123", "expires_at": 1999999999, "session": body["session"]})
+
+
+@pytest.fixture
+def realtime(pm):
+    fake = FakeRealtime()
+    stt_module.set_transport_override(httpx.MockTransport(fake.handle))
+    r = pm.put(
+        "/providers/configs",
+        json={
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "api_key": OPENAI_KEY,
+            "remember": True,
+            "make_default": False,
+        },
+    )
+    assert r.status_code == 200, r.text
+    yield fake
+    stt_module.set_transport_override(None)
+
+
+def test_streaming_token_is_ephemeral_and_configured(pm, realtime, caplog):
+    meeting = create_meeting(pm, source_language="vi", target_language="ja", participants=[{"display_name": "Tanaka"}])
+    out = start(pm, meeting["id"])
+    sid = out["session"]["id"]
+    assert out["session"]["capture_config"]["mode"] == "streaming"
+    r = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"})
+    assert r.status_code == 200, r.text
+    tok = r.json()
+    assert tok["client_secret"] == "ek_test_123" and tok["model"] == "gpt-live-transcribe"
+    assert tok["calls_url"] == "https://api.openai.com/v1/realtime/calls"
+    assert OPENAI_KEY not in r.text and OPENAI_KEY not in caplog.text
+    body = realtime.bodies[0]
+    assert body["expires_after"] == {"anchor": "created_at", "seconds": 600}
+    session = body["session"]
+    assert session["type"] == "transcription"
+    tr = session["audio"]["input"]["transcription"]
+    assert tr["languages"] == ["vi", "ja"] and "Tanaka" in tr["keywords"]
+    assert session["audio"]["input"]["noise_reduction"] == {"type": "near_field"}
+    assert session["audio"]["input"]["turn_detection"]["type"] == "server_vad"
+    # Meeting audio uses far-field noise reduction.
+    pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "meeting"})
+    assert realtime.bodies[1]["session"]["audio"]["input"]["noise_reduction"] == {"type": "far_field"}
+
+
+def test_streaming_model_fallback(pm, realtime):
+    realtime.live_model_available = False
+    meeting = create_meeting(pm)
+    sid = start(pm, meeting["id"], languages=["ja"])["session"]["id"]
+    tok = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).json()
+    assert tok["model"] == "gpt-4o-transcribe"
+    tr = realtime.bodies[1]["session"]["audio"]["input"]["transcription"]
+    assert tr["model"] == "gpt-4o-transcribe" and tr["language"] == "ja"
+    assert "languages" not in tr and "在庫引当" in tr["prompt"]  # glossary terms as a prompt hint
+
+
+def test_streaming_segments_are_stored_translated_and_idempotent(pm, member, db, realtime):
+    meeting = create_meeting(pm)
+    sid = start(pm, meeting["id"])["session"]["id"]
+    seg = {
+        "source_id": "mic",
+        "item_id": "item_001",
+        "text": "Xin chào, tôi tên là Hùng.",
+        "offset_ms": 1200,
+        "duration_ms": 2300,
+        "model": "gpt-live-transcribe",
+    }
+    r = pm.post(f"/audio-sessions/{sid}/segments", json=seg)
+    assert r.status_code == 200, r.text
+    e = r.json()["entries"][0]
+    assert e["speaker_label"] == "Tôi" and e["start_ms"] == 1200 and e["end_ms"] == 3500
+    assert e["translation"]["status"] == "done" and e["source_metadata"]["streaming"] is True
+    assert pm.post(f"/audio-sessions/{sid}/segments", json=seg).json()["duplicate"] is True
+    # Meeting audio: provider speaker labels map to stable session speakers; none → unattributed.
+    a = pm.post(
+        f"/audio-sessions/{sid}/segments", json={**seg, "source_id": "meeting", "item_id": "i2", "speaker": "spk_1"}
+    ).json()["entries"][0]
+    b = pm.post(
+        f"/audio-sessions/{sid}/segments", json={**seg, "source_id": "meeting", "item_id": "i3", "speaker": "spk_1"}
+    ).json()["entries"][0]
+    c = pm.post(f"/audio-sessions/{sid}/segments", json={**seg, "source_id": "meeting", "item_id": "i4"}).json()
+    assert a["speaker_label"] == b["speaker_label"] == "Người 1"
+    assert c["entries"][0]["speaker_label"] is None
+    usage = db.scalars(select(UsageRecord).where(UsageRecord.operation == "speech_to_text")).all()
+    assert len(usage) == 4 and all(float(u.audio_seconds) == 2.3 for u in usage)
+    # Only the capturing user; invalid input rejected.
+    assert member.post(f"/audio-sessions/{sid}/segments", json=seg).status_code in (403, 404)
+    assert pm.post(f"/audio-sessions/{sid}/segments", json={**seg, "item_id": "bad id!"}).status_code == 422
+    assert pm.post(f"/audio-sessions/{sid}/segments", json={**seg, "text": "x" * 6000}).status_code == 422
+
+
+def test_mock_sessions_use_chunked_mode_only(pm):
+    meeting = create_meeting(pm)
+    out = start(pm, meeting["id"])
+    assert out["session"]["capture_config"]["mode"] == "chunked"
+    sid = out["session"]["id"]
+    assert pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).status_code == 409
+    seg = {"source_id": "mic", "item_id": "x", "text": "hi", "offset_ms": 0}
+    assert pm.post(f"/audio-sessions/{sid}/segments", json=seg).status_code == 409
+
+
+def test_streaming_token_errors_are_safe(pm, realtime, monkeypatch):
+    meeting = create_meeting(pm)
+    sid = start(pm, meeting["id"])["session"]["id"]
+    stt_module.set_transport_override(
+        httpx.MockTransport(lambda req: httpx.Response(401, json={"error": {"message": f"bad key {OPENAI_KEY}"}}))
+    )
+    r = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"})
+    assert r.status_code == 502 and OPENAI_KEY not in r.text and "rejected" in r.json()["error"]["message"]

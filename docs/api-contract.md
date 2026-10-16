@@ -67,6 +67,8 @@ Base path `/api/v1`. Machine-readable spec: [`docs/openapi.json`](openapi.json) 
 | | `POST /jobs/{id}/retry` | retry a failed retrieval job |
 | Live audio | `POST /meetings/{id}/audio-sessions` | `{sources[{id,kind,label,single_speaker}], translate, consent_confirmed}`; one active live session per meeting |
 | | `POST /audio-sessions/{id}/chunks` | multipart `source_id, chunk_seq, offset_ms, file` (16-bit mono WAV ≤ 30 s); synchronous → recognised entries; idempotent per `(source_id, chunk_seq)`; creator only; rate-limited |
+| | `POST /audio-sessions/{id}/realtime-token` | `{source_id}` → ephemeral OpenAI Realtime client secret (streaming mode, creator only, rate-limited) |
+| | `POST /audio-sessions/{id}/segments` | `{source_id, item_id, text, offset_ms, duration_ms?, model?, speaker?}` final streaming utterance → stored + translated; idempotent per item |
 | | `GET /audio-sessions/{id}`, `POST /audio-sessions/{id}/stop`, `PATCH /audio-sessions/{id}/speakers/{key}` | speakers (no audio returned); stop deletes voice references; rename relabels existing entries |
 | Webhooks (WS2) | `POST /integrations/zoom/webhook` | unauthenticated; HMAC signature + timestamp tolerance, size limit, IP rate limit, replay dedup, URL validation |
 
