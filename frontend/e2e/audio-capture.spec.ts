@@ -80,4 +80,10 @@ test("Capture microphone audio → recognised, speaker-labelled and translated l
   await tid(page, "stop-audio").click();
   await expect(tid(page, "replay-status")).toHaveText("stopped", { timeout: 30_000 });
   await expect(tid(page, "start-audio")).toBeVisible();
+
+  // After the live session: one click to the AI meeting memo.
+  await expect(tid(page, "live-finished")).toBeVisible();
+  await tid(page, "live-generate-memo").click();
+  await expect(page).toHaveURL(/\/memo$/);
+  await expect(page.getByText("AI không thể tự phê duyệt")).toBeVisible({ timeout: 30_000 });
 });

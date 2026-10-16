@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AudioCapturePanel } from "@/components/audio/AudioCapturePanel";
 import { Alert, Badge, Button, Card, Checkbox, EmptyState, Field, Input, ProgressBar, Spinner, Tabs, Textarea } from "@/components/ui";
@@ -30,7 +32,9 @@ function elapsed(session: LiveSession, now: number | undefined): string {
  * with speaker separation), a real platform connector (Zoom RTMS), or the
  * replay demo (labelled DEMO). All feed the same polling endpoint. */
 export default function LivePage() {
+  const router = useRouter();
   const { id, data: meeting, reload: reloadMeeting } = useMeeting();
+  const [memoBusy, setMemoBusy] = useState(false);
   const [feed, setFeed] = useState<Feed | null>(null);
   const [text, setText] = useState("");
   const [interval, setIntervalSec] = useState("1.5");
@@ -90,6 +94,18 @@ export default function LivePage() {
     }
   }
 
+  async function generateMemo() {
+    setMemoBusy(true);
+    setError(null);
+    try {
+      await api.post(`/meetings/${id}/memo/generate`);
+      router.push(`/meetings/${id}/memo`);
+    } catch (err) {
+      setError(errorMessage(err));
+      setMemoBusy(false);
+    }
+  }
+
   async function stop() {
     if (!feed?.session) return;
     try {
@@ -109,6 +125,7 @@ export default function LivePage() {
   const canStart = meeting.permissions.edit && meeting.entry_count === 0 && (!feed?.session || (feed.session.is_demo && !active));
   const audioMode = meeting.permissions.edit && (mode === "audio" || (isAudio && active));
   const showTabs = meeting.permissions.edit && !active;
+  const finished = !!feed?.session && !active && meeting.entry_count > 0;
 
   return (
     <>
@@ -132,6 +149,32 @@ export default function LivePage() {
         </div>
       )}
       {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
+
+      {finished && (
+        <Card title={t.liveDone.title} className="mb-4">
+          <div className="space-y-3 text-sm" data-testid="live-finished">
+            <p className="text-muted">{t.liveDone.body.replace("{n}", String(meeting.entry_count))}</p>
+            <div className="flex flex-wrap gap-2">
+              {meeting.permissions.edit &&
+                (meeting.memo_status ? (
+                  <Link href={`/meetings/${id}/memo`}>
+                    <Button variant="primary" data-testid="live-open-memo">
+                      {t.liveDone.openMemo}
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="primary" onClick={() => void generateMemo()} loading={memoBusy} data-testid="live-generate-memo">
+                    {t.liveDone.generateMemo}
+                  </Button>
+                ))}
+              <Link href={`/meetings/${id}`}>
+                <Button>{t.liveDone.openTranscript}</Button>
+              </Link>
+            </div>
+            <p className="text-xs text-muted">{t.liveDone.hint}</p>
+          </div>
+        </Card>
+      )}
 
       {showTabs && (
         <div className="mb-3">

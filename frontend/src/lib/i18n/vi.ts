@@ -494,6 +494,14 @@ export const vi = {
     hasTranscript: "có transcript",
     openLive: "Mở màn hình trực tiếp →",
   },
+  liveDone: {
+    title: "Buổi dịch trực tiếp đã kết thúc",
+    body: "Đã ghi nhận {n} câu (kèm bản dịch). Tiếp theo, tạo biên bản / tóm tắt cuộc họp bằng AI từ toàn bộ nội dung này.",
+    generateMemo: "Tạo biên bản / tóm tắt AI",
+    openMemo: "Mở biên bản cuộc họp",
+    openTranscript: "Xem & sửa transcript",
+    hint: "Có thể sửa câu nhận dạng sai hoặc đổi tên người nói trong transcript trước khi tạo biên bản để tóm tắt chính xác hơn. Biên bản do AI soạn cần người dùng duyệt.",
+  },
   liveTranslate: {
     title: "Dịch trực tiếp từ âm thanh",
     subtitle: "Thu âm thanh trên máy (micro, âm thanh cuộc họp Teams/Zoom/Meet), nhận dạng giọng nói, tách người nói và dịch ngay.",
