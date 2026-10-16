@@ -27,6 +27,13 @@ if grep -q $'\r' .env 2>/dev/null; then
   echo "✅ Đã chuẩn hóa xuống dòng trong .env (CRLF → LF)"
 fi
 
+# Docker Compose reads "KEY=   # comment" as the value "# comment": drop comments after empty values
+# (older .env files copied from .env.example contained such lines).
+if grep -qE '^[A-Za-z0-9_]+=[[:space:]]+#' .env 2>/dev/null; then
+  sed -i.bak -E 's/^([A-Za-z0-9_]+=)[[:space:]]+#.*$/\1/' .env && rm -f .env.bak
+  echo "✅ Đã sửa các dòng chú thích sau biến trống trong .env"
+fi
+
 echo "⏳ Đang build và khởi động (lần đầu có thể mất 3–10 phút)…"
 "${COMPOSE[@]}" up --build -d
 

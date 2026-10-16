@@ -30,9 +30,11 @@ if (-not (Test-Path .env)) {
 $envPath = Join-Path $PSScriptRoot ".env"
 $raw = [System.IO.File]::ReadAllText($envPath)
 $clean = $raw.TrimStart([char]0xFEFF) -replace "`r", ""
+# Docker Compose reads "KEY=   # comment" as the value "# comment": drop comments after empty values.
+$clean = $clean -replace '(?m)^([A-Za-z0-9_]+=)[ \t]+#.*$', '$1'
 if ($clean -ne $raw) {
   [System.IO.File]::WriteAllText($envPath, $clean, (New-Object System.Text.UTF8Encoding($false)))
-  Write-Host "Da chuan hoa file .env (CRLF -> LF)"
+  Write-Host "Da sua file .env (xuong dong / chu thich sau bien trong)"
 }
 
 Write-Host "Dang build va khoi dong (lan dau co the mat 3-10 phut)..."
