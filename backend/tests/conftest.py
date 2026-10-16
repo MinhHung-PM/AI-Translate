@@ -206,6 +206,8 @@ def fake(monkeypatch: Any) -> Any:
     }.items():
         monkeypatch.setattr(s, key, value)
     set_transport_override(httpx.MockTransport(providers.handle))
+    # The optional `rtms` SDK is not installed in CI; tests substitute a fake RTMS client instead.
+    monkeypatch.setattr("app.integrations.zoom.connector.rtms_sdk_available", lambda: True)
     yield providers
     set_transport_override(None)
 

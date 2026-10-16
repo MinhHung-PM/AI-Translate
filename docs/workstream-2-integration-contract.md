@@ -1,68 +1,81 @@
-# Workstream 2 integration contract
+# Workstream 2 integration contract (as implemented)
 
-Workstream 1 ships the Product Core. Live meeting integrations (Microsoft Teams, Zoom RTMS, Google Meet)
-are **not implemented**; the UI reports them as "Integration not configured" and offers transcript import.
-This document fixes the interfaces those connectors must use, so they plug in without changing the core.
+This replaces the WS1 draft contract. Code lives in `backend/app/integrations/`. A connector is a thin
+adapter: it talks to one provider and emits canonical events; storage, translation, memo, review and
+action tracking are the unchanged Workstream 1 services.
 
-## 1. Normalized event (`backend/app/connectors/base.py`)
-
-```python
-class TranscriptEvent(BaseModel):          # extra fields are rejected
-    connector: str          # "teams" | "zoom" | "google_meet" | "replay"
-    is_demo: bool           # True only for replay; the UI labels demo sessions
-    external_id: str | None # stable id from the source → ingestion is idempotent
-    speaker: str | None     # only if the platform provides it — never inferred
-    start_ms: int | None    # offset from meeting start, if provided
-    end_ms: int | None
-    text: str               # final recognized text (≤ 20 000 chars)
-    language: "ja"|"vi"|"en"|None
-    is_final: bool = True   # interim/partial results are ignored by ingestion
-    metadata: dict          # source-specific ids (e.g. Graph transcript id, RTMS stream id)
+```
+Meeting source ─▶ Connector ─▶ CanonicalEvent ─▶ normalization (dedup, ordering)
+   ─▶ services.ingestion.ingest_event ─▶ TranscriptEntry ─▶ translate_entries ─▶ live feed / workspace
+   ─▶ memo generation ─▶ review ─▶ action tracker
 ```
 
-## 2. Ingestion entry point
+## 1. Connector contract (`integrations/base.py`)
+
+| Method | Purpose |
+|---|---|
+| `configuration_problems()` / `is_configured()` | Server-side prerequisites (env vars). Unconfigured → *Not Configured* |
+| `get_capabilities(scopes, connected)` | Returns a `CapabilityState` for **every** `Capability` (contract test enforces it) |
+| `requested_scopes()` / `authorization_params()` / `begin_authorization(state, challenge, redirect_uri)` | Authorization-code + PKCE (S256) URL |
+| `complete_authorization(code, verifier, redirect_uri)` / `refresh_credentials(rt)` / `revoke(tokens)` | Token lifecycle (`TokenSet`) |
+| `fetch_account(token)` / `health_check(token, scopes)` | Connection test |
+| `list_available_meetings(token)` | Optional (capability `list_meetings`) |
+| `resolve_meeting(token, reference)` | Join URL / id / code → `ResolvedMeeting` (validates access through the provider) |
+| `fetch_transcript(token, ref)` | → `TranscriptFetchResult(status, events, message)`; status `available` / `pending` / `not_available` |
+| `subscribe_to_meeting_events`, `start/stop_realtime_ingestion` | Raise `unsupported` unless the provider implements them (Zoom RTMS lives in `zoom/rtms.py` + `orchestration/connection_manager.py`) |
+
+Provider errors are mapped to `IntegrationError(category, message, retry_after, provider_code)`;
+categories (`integrations/errors.py`): `not_configured, not_connected, invalid_credentials, token_expired,
+consent_revoked, insufficient_scope, admin_approval_required, unsupported_account, unsupported,
+meeting_not_found, no_meeting_access, transcript_unavailable, transcript_pending, rate_limited,
+provider_unavailable, invalid_signature, invalid_request, invalid_response`. Non-retryable categories are
+never retried.
+
+## 2. Capabilities (`integrations/capabilities.py`)
+
+Capabilities: `transcript_import, list_meetings, post_meeting_transcript, live_transcript, live_audio,
+speaker_metadata, meeting_event_notifications, recovery_after_disconnect`.
+Status: `available, requires_configuration, requires_user_consent, requires_admin_approval, not_supported,
+temporarily_unavailable` + `message`, `remediation`, `verified_live` (always `false` in this delivery).
+The API refuses an operation whose capability is not `available` (`409 integration_unsupported` /
+`integration_admin_approval_required` …).
+
+## 3. Canonical event (`integrations/models.py`)
 
 ```python
-from app.services.ingestion import ingest_event
-entry = ingest_event(db, meeting, event)   # → TranscriptEntry | None; caller commits
+class CanonicalEvent(BaseModel):  # extra fields forbidden
+    event_id: str; provider: str; provider_meeting_id: str | None; meeting_id: UUID | None
+    event_type: transcript_segment | meeting_started | meeting_ended | connection_status
+                | transcript_available | ingestion_error
+    entry_id: str | None            # provider id of the segment
+    speaker_id: str | None; speaker_display_name: str | None     # None if not supplied — never invented
+    start_timestamp_ms: int | None; end_timestamp_ms: int | None # None if not supplied — never invented
+    source_language: ja | vi | en | None; original_text: str | None
+    translation_status: str | None; source_metadata: dict; received_at: datetime
+    provider_sequence: int | None; is_final: bool = True; is_demo: bool = False
 ```
 
-* Assigns the next `sequence`, cleans text, detects language if absent, stores connector metadata.
-* Idempotent on `external_id` (re-delivered webhooks do not duplicate entries).
-* After ingesting, a connector may call `translate_entries(...)` for low-latency translation (as the
-  replay demo does) or enqueue a `translation` job for batches.
-* The UI's live view polls `GET /api/v1/meetings/{id}/live?after_sequence=N`; nothing else changes.
+## 4. Dedup, ordering, idempotency
 
-## 3. Connector interface
+* Dedup key = SHA-256 of the first available of `entry_id` → `provider_sequence` →
+  `(start_ms, speaker, text)`; no key when none exist (legitimate repeats are kept).
+  Enforced by `uq_transcript_entry_dedup(meeting_id, dedup_key)` + savepoint on conflict.
+* Live events pass through `OrderingBuffer(max_items=50, max_delay_s=1.5)`; late events are kept and
+  flagged `late=true`, never dropped.
+* Webhooks are recorded in `provider_events` with a unique `(provider, dedup_key)` → replays are no-ops.
+* Retrieval jobs use bounded exponential backoff with full jitter, honour `Retry-After`, and stop after
+  `INTEGRATION_FETCH_MAX_ATTEMPTS`.
 
-```python
-class MeetingConnector(Protocol):
-    key: str
-    def status(self) -> ConnectorStatus: ...          # available | demo | not_configured + message
-    def start(self, meeting_id: str, options: dict) -> str: ...   # returns live_session id
-    def stop(self, live_session_id: str) -> None: ...
-```
+## 5. Authorization of ingestion
 
-Register the connector in `connectors/registry.py` and flip its status from `not_configured` only when
-credentials/permissions are verified at runtime. A `live_sessions` row (`connector`, `is_demo=false`,
-status, counters) must be created per live session.
+Events are written only to the meeting a permitted user explicitly linked
+(`external_meeting_refs`, unique per meeting and per provider meeting). Webhooks for unlinked meetings are
+recorded and ignored. RTMS streams are joined only for meetings armed via *live/start*.
 
-## 4. Platform notes (to be validated in Workstream 2)
+## 6. Adding a provider
 
-| Platform | Likely mechanism | Prerequisites (blockers for WS1) |
-|---|---|---|
-| Microsoft Teams | Microsoft Graph online-meeting transcripts (`/onlineMeetings/{id}/transcripts`, change notifications) for post-meeting/near-real-time; real-time media requires a hosted media bot | Entra app registration, `OnlineMeetingTranscript.Read.All` (application) + admin consent, application access policy, webhook endpoint |
-| Zoom | Realtime Media Streams (RTMS) for live transcript/audio; cloud recording transcript (VTT) for post-meeting | Zoom Marketplace app, RTMS entitlement, webhook validation secret |
-| Google Meet | Meet REST API transcripts (post-meeting, Google Docs) and Workspace Events subscriptions | Google Workspace edition with transcripts, OAuth consent, domain-wide policy |
-
-Until then: export the transcript (VTT/TXT) from the platform and import it — fully supported.
-
-## 5. Security requirements for connectors
-
-* Platform credentials live in a secret manager, never in the database in plaintext; reuse
-  `core/crypto.KeyRing` if they must be stored.
-* Webhooks must verify signatures/validation tokens before calling `ingest_event`.
-* A connector may only ingest into meetings of projects for which the meeting owner has access; resolve
-  the meeting by an explicit mapping (meeting URL/ID recorded on `meetings.meeting_url` or metadata),
-  never by guessing from titles.
-* Audio is out of scope for storage in WS1; if WS2 stores audio, extend retention (`services/retention.py`).
+1. Add a `PlatformProvider` value and a `Connector` subclass under `integrations/<provider>/`.
+2. Register it in `integrations/registry.py`.
+3. Add fake-provider scenarios in `tests/fakes/fake_providers.py`; the contract tests in
+   `test_integrations_unit.py` run against every registered connector automatically.
+4. Document it in `docs/integrations/<provider>.md` with verification date and status per capability.

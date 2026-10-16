@@ -1,4 +1,4 @@
-# Architecture — AI Meeting Translator & Memo Hub (Workstream 1)
+# Architecture — AI Meeting Translator & Memo Hub (Workstreams 1 & 2)
 
 ## Overview
 
@@ -10,6 +10,11 @@ Browser ──HTTPS──▶ Next.js (web, :3000) ──/api/v1 proxy──▶ F
                                                               │
                                                               ▼
                                                AI provider (mock | OpenAI | OpenAI-compatible)
+
+Workstream 2 (meeting platforms):
+  Graph / Zoom API / Meet REST ◀─OAuth tokens (encrypted)── api + worker ──▶ same TranscriptEntry pipeline
+  Zoom webhooks ──▶ POST /integrations/zoom/webhook ──▶ provider_events ──▶ jobs (fetch_transcript | realtime_ingest)
+  Zoom RTMS (official SDK, worker thread) ──▶ ordering buffer ──▶ ingest_event ──▶ translate ──▶ live feed (polling)
 ```
 
 * **web** — Next.js 16 App Router, strict TypeScript, Tailwind v4. Client-rendered pages; the browser
@@ -34,7 +39,8 @@ Browser ──HTTPS──▶ Next.js (web, :3000) ──/api/v1 proxy──▶ F
 | Services | `services/*.py` | Business rules: import, translation, memo generation, exports, usage, retention |
 | Transcript pipeline | `services/transcripts/` | Parsers (TXT/SRT/VTT/JSON), decoding, normalization, segmentation, language detection |
 | AI abstraction | `ai/base.py`, `ai/llm.py`, `ai/openai_provider.py`, `ai/mock.py`, `ai/catalog.json` | Provider-neutral interfaces, adapters, prompts, output schemas |
-| Connectors | `connectors/` | Live-source contract (`TranscriptEvent`, `MeetingConnector`); replay demo |
+| Connectors (WS1) | `connectors/` | Platform status summary for the meeting form; replay demo |
+| Integrations (WS2) | `integrations/` | Connector contract, capabilities, canonical event, normalization (dedup/ordering), OAuth, Teams/Zoom/Meet connectors, orchestration (ingestion, retrieval, live sessions, recovery). See [`workstream-2-integration-contract.md`](workstream-2-integration-contract.md) |
 | Data | `models/`, `alembic/` | SQLAlchemy models, migrations |
 | Core | `core/` | Settings, structured logging + redaction, AES-GCM keyring, errors, rate limiting |
 

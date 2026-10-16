@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "AI Meeting Translator & Memo Hub",
-  "description": "Workstream 1 (Product Core) API. All endpoints are under /api/v1.",
+  "description": "Product Core (Workstream 1) and meeting-platform integrations (Workstream 2) API. All endpoints are under /api/v1.",
   "version": "1.0.0"
  },
  "paths": {
@@ -4223,6 +4223,713 @@
     }
    }
   },
+  "/api/v1/integrations": {
+   "get": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "List Integrations",
+    "operationId": "list_integrations_api_v1_integrations_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ConnectionView"
+         },
+         "type": "array",
+         "title": "Response List Integrations Api V1 Integrations Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/integrations/{provider}": {
+   "get": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Get Integration",
+    "operationId": "get_integration_api_v1_integrations__provider__get",
+    "parameters": [
+     {
+      "name": "provider",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Provider"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConnectionView"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Disconnect",
+    "operationId": "disconnect_api_v1_integrations__provider__delete",
+    "parameters": [
+     {
+      "name": "provider",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Provider"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConnectionView"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/integrations/{provider}/connect": {
+   "post": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Connect",
+    "operationId": "connect_api_v1_integrations__provider__connect_post",
+    "parameters": [
+     {
+      "name": "provider",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Provider"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConnectOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/integrations/{provider}/oauth/callback": {
+   "get": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Oauth Callback",
+    "description": "Provider redirect target. Requires the same logged-in session that started the\nflow; redirects only to a fixed in-app path (no open redirect).",
+    "operationId": "oauth_callback_api_v1_integrations__provider__oauth_callback_get",
+    "parameters": [
+     {
+      "name": "provider",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Provider"
+      }
+     },
+     {
+      "name": "code",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "",
+       "title": "Code"
+      }
+     },
+     {
+      "name": "state",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "",
+       "title": "State"
+      }
+     },
+     {
+      "name": "error",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Error"
+      }
+     },
+     {
+      "name": "error_description",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Error Description"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/integrations/{provider}/test": {
+   "post": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Test Connection",
+    "operationId": "test_connection_api_v1_integrations__provider__test_post",
+    "parameters": [
+     {
+      "name": "provider",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Provider"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TestOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/integrations/{provider}/meetings": {
+   "get": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "List Platform Meetings",
+    "operationId": "list_platform_meetings_api_v1_integrations__provider__meetings_get",
+    "parameters": [
+     {
+      "name": "provider",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Provider"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/AvailableMeetingOut"
+         },
+         "title": "Response List Platform Meetings Api V1 Integrations  Provider  Meetings Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/integrations/{provider}/diagnostics": {
+   "get": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Diagnostics",
+    "description": "Safe diagnostics: categories and timestamps only — no tokens, secrets or transcript text.",
+    "operationId": "diagnostics_api_v1_integrations__provider__diagnostics_get",
+    "parameters": [
+     {
+      "name": "provider",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Provider"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DiagnosticsOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/meetings/{meeting_id}/external-source": {
+   "get": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Get Source",
+    "operationId": "get_source_api_v1_meetings__meeting_id__external_source_get",
+    "parameters": [
+     {
+      "name": "meeting_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Meeting Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/ExternalSourceOut"
+          },
+          {
+           "type": "null"
+          }
+         ],
+         "title": "Response Get Source Api V1 Meetings  Meeting Id  External Source Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Link Source",
+    "operationId": "link_source_api_v1_meetings__meeting_id__external_source_post",
+    "parameters": [
+     {
+      "name": "meeting_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Meeting Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LinkIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ExternalSourceOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Unlink Source",
+    "operationId": "unlink_source_api_v1_meetings__meeting_id__external_source_delete",
+    "parameters": [
+     {
+      "name": "meeting_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Meeting Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/meetings/{meeting_id}/external-source/fetch": {
+   "post": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Fetch Transcript",
+    "description": "Retrieve (or retry retrieving) the post-meeting transcript in the background.",
+    "operationId": "fetch_transcript_api_v1_meetings__meeting_id__external_source_fetch_post",
+    "parameters": [
+     {
+      "name": "meeting_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Meeting Id"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/meetings/{meeting_id}/external-source/live/start": {
+   "post": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Start Live",
+    "operationId": "start_live_api_v1_meetings__meeting_id__external_source_live_start_post",
+    "parameters": [
+     {
+      "name": "meeting_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Meeting Id"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveSessionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/meetings/{meeting_id}/external-source/live/stop": {
+   "post": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Stop Live",
+    "operationId": "stop_live_api_v1_meetings__meeting_id__external_source_live_stop_post",
+    "parameters": [
+     {
+      "name": "meeting_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Meeting Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "integer"
+         },
+         "title": "Response Stop Live Api V1 Meetings  Meeting Id  External Source Live Stop Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/jobs/{job_id}/retry": {
+   "post": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Retry Job",
+    "description": "Manual retry of a failed ingestion/translation job (dead-letter recovery).",
+    "operationId": "retry_job_api_v1_jobs__job_id__retry_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/integrations/zoom/webhook": {
+   "post": {
+    "tags": [
+     "integrations"
+    ],
+    "summary": "Zoom Webhook Endpoint",
+    "description": "Unauthenticated by design; authenticity is proven by Zoom's HMAC signature,\ntimestamp freshness and single-use event keys.",
+    "operationId": "zoom_webhook_endpoint_api_v1_integrations_zoom_webhook_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/v1/health/live": {
    "get": {
     "tags": [
@@ -4893,6 +5600,74 @@
     ],
     "title": "AuditEventOut"
    },
+   "AvailableMeetingOut": {
+    "properties": {
+     "provider_meeting_id": {
+      "type": "string",
+      "title": "Provider Meeting Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "start": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "join_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Join Url"
+     },
+     "has_transcript": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Has Transcript"
+     }
+    },
+    "type": "object",
+    "required": [
+     "provider_meeting_id",
+     "title",
+     "start",
+     "end",
+     "join_url",
+     "has_transcript"
+    ],
+    "title": "AvailableMeetingOut"
+   },
    "Body_start_replay_api_v1_meetings__meeting_id__replay_post": {
     "properties": {
      "file": {
@@ -4963,17 +5738,54 @@
     ],
     "title": "Body_upload_transcript_api_v1_meetings__meeting_id__transcript_upload_post"
    },
-   "Capability": {
+   "CapabilityState": {
+    "properties": {
+     "capability": {
+      "$ref": "#/components/schemas/app__integrations__capabilities__Capability"
+     },
+     "status": {
+      "$ref": "#/components/schemas/CapabilityStatus"
+     },
+     "message": {
+      "type": "string",
+      "title": "Message"
+     },
+     "remediation": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remediation"
+     },
+     "verified_live": {
+      "type": "boolean",
+      "title": "Verified Live",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "capability",
+     "status",
+     "message"
+    ],
+    "title": "CapabilityState"
+   },
+   "CapabilityStatus": {
     "type": "string",
     "enum": [
-     "translation",
-     "memo_generation",
-     "structured_output",
-     "model_discovery",
-     "streaming",
-     "speech_to_text"
+     "available",
+     "requires_configuration",
+     "requires_user_consent",
+     "requires_admin_approval",
+     "not_supported",
+     "temporarily_unavailable"
     ],
-    "title": "Capability"
+    "title": "CapabilityStatus"
    },
    "Confidence": {
     "type": "string",
@@ -4983,6 +5795,19 @@
      "low"
     ],
     "title": "Confidence"
+   },
+   "ConnectOut": {
+    "properties": {
+     "authorization_url": {
+      "type": "string",
+      "title": "Authorization Url"
+     }
+    },
+    "type": "object",
+    "required": [
+     "authorization_url"
+    ],
+    "title": "ConnectOut"
    },
    "ConnectionTestOut": {
     "properties": {
@@ -5015,6 +5840,159 @@
      "message"
     ],
     "title": "ConnectionTestOut"
+   },
+   "ConnectionView": {
+    "properties": {
+     "provider": {
+      "type": "string",
+      "title": "Provider"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "configured": {
+      "type": "boolean",
+      "title": "Configured"
+     },
+     "configuration_problems": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Configuration Problems"
+     },
+     "sandbox": {
+      "type": "boolean",
+      "title": "Sandbox"
+     },
+     "status": {
+      "$ref": "#/components/schemas/DisplayStatus"
+     },
+     "account": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Account"
+     },
+     "granted_scopes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Granted Scopes"
+     },
+     "requested_scopes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Requested Scopes"
+     },
+     "capabilities": {
+      "items": {
+       "$ref": "#/components/schemas/CapabilityState"
+      },
+      "type": "array",
+      "title": "Capabilities"
+     },
+     "last_attempt_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Attempt At"
+     },
+     "last_success_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Success At"
+     },
+     "last_event_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Event At"
+     },
+     "last_error_category": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Error Category"
+     },
+     "last_error_message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Error Message"
+     },
+     "reconnect_count": {
+      "type": "integer",
+      "title": "Reconnect Count"
+     },
+     "redirect_uri": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Redirect Uri"
+     }
+    },
+    "type": "object",
+    "required": [
+     "provider",
+     "display_name",
+     "configured",
+     "configuration_problems",
+     "sandbox",
+     "status",
+     "account",
+     "granted_scopes",
+     "requested_scopes",
+     "capabilities",
+     "last_attempt_at",
+     "last_success_at",
+     "last_event_at",
+     "last_error_category",
+     "last_error_message",
+     "reconnect_count",
+     "redirect_uri"
+    ],
+    "title": "ConnectionView"
    },
    "ConnectorStatusOut": {
     "properties": {
@@ -5345,6 +6323,34 @@
     ],
     "title": "DevUserOut"
    },
+   "DiagnosticsOut": {
+    "properties": {
+     "connection": {
+      "$ref": "#/components/schemas/ConnectionView"
+     },
+     "recent_events": {
+      "items": {
+       "$ref": "#/components/schemas/ProviderEventOut"
+      },
+      "type": "array",
+      "title": "Recent Events"
+     },
+     "recent_jobs": {
+      "items": {
+       "$ref": "#/components/schemas/JobOut"
+      },
+      "type": "array",
+      "title": "Recent Jobs"
+     }
+    },
+    "type": "object",
+    "required": [
+     "connection",
+     "recent_events",
+     "recent_jobs"
+    ],
+    "title": "DiagnosticsOut"
+   },
    "DiscussionTopicIO": {
     "properties": {
      "topic": {
@@ -5377,6 +6383,20 @@
      "topic"
     ],
     "title": "DiscussionTopicIO"
+   },
+   "DisplayStatus": {
+    "type": "string",
+    "enum": [
+     "not_configured",
+     "not_connected",
+     "awaiting_authorization",
+     "connected",
+     "connected_post_meeting_only",
+     "admin_approval_required",
+     "temporarily_disconnected",
+     "error"
+    ],
+    "title": "DisplayStatus"
    },
    "DivisionAssignmentIn": {
     "properties": {
@@ -5633,6 +6653,130 @@
     "additionalProperties": false,
     "type": "object",
     "title": "EntryUpdate"
+   },
+   "ExternalSourceOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "meeting_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Meeting Id"
+     },
+     "provider": {
+      "$ref": "#/components/schemas/PlatformProvider"
+     },
+     "provider_meeting_id": {
+      "type": "string",
+      "title": "Provider Meeting Id"
+     },
+     "join_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Join Url"
+     },
+     "transcript_status": {
+      "type": "string",
+      "title": "Transcript Status"
+     },
+     "status_message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status Message"
+     },
+     "fetch_attempts": {
+      "type": "integer",
+      "title": "Fetch Attempts"
+     },
+     "last_checked_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Checked At"
+     },
+     "next_check_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Check At"
+     },
+     "live_requested": {
+      "type": "boolean",
+      "title": "Live Requested"
+     },
+     "sandbox": {
+      "type": "boolean",
+      "title": "Sandbox"
+     },
+     "capabilities": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Capabilities"
+     },
+     "connection_status": {
+      "type": "string",
+      "title": "Connection Status"
+     },
+     "live_session": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/LiveSessionOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "meeting_id",
+     "provider",
+     "provider_meeting_id",
+     "join_url",
+     "transcript_status",
+     "status_message",
+     "fetch_attempts",
+     "last_checked_at",
+     "next_check_at",
+     "live_requested",
+     "sandbox",
+     "capabilities",
+     "connection_status",
+     "live_session"
+    ],
+    "title": "ExternalSourceOut"
    },
    "GlobalRole": {
     "type": "string",
@@ -6254,7 +7398,9 @@
     "enum": [
      "translate",
      "generate_memo",
-     "replay"
+     "replay",
+     "fetch_transcript",
+     "realtime_ingest"
     ],
     "title": "JobKind"
    },
@@ -6416,6 +7562,25 @@
     ],
     "title": "Likelihood"
    },
+   "LinkIn": {
+    "properties": {
+     "provider": {
+      "$ref": "#/components/schemas/PlatformProvider"
+     },
+     "reference": {
+      "type": "string",
+      "maxLength": 2048,
+      "minLength": 3,
+      "title": "Reference"
+     }
+    },
+    "type": "object",
+    "required": [
+     "provider",
+     "reference"
+    ],
+    "title": "LinkIn"
+   },
    "LiveFeedOut": {
     "properties": {
      "session": {
@@ -6525,7 +7690,9 @@
      "running",
      "completed",
      "failed",
-     "stopped"
+     "stopped",
+     "waiting",
+     "interrupted"
     ],
     "title": "LiveSessionStatus"
    },
@@ -7877,6 +9044,15 @@
     ],
     "title": "ParticipantOut"
    },
+   "PlatformProvider": {
+    "type": "string",
+    "enum": [
+     "teams",
+     "zoom",
+     "google_meet"
+    ],
+    "title": "PlatformProvider"
+   },
    "Priority": {
     "type": "string",
     "enum": [
@@ -8298,7 +9474,7 @@
      },
      "capabilities": {
       "items": {
-       "$ref": "#/components/schemas/Capability"
+       "$ref": "#/components/schemas/app__ai__base__Capability"
       },
       "type": "array",
       "title": "Capabilities"
@@ -8492,6 +9668,60 @@
      "last_tested_at"
     ],
     "title": "ProviderConfigOut"
+   },
+   "ProviderEventOut": {
+    "properties": {
+     "provider": {
+      "type": "string",
+      "title": "Provider"
+     },
+     "event_type": {
+      "type": "string",
+      "title": "Event Type"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "detail": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Detail"
+     },
+     "meeting_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Meeting Id"
+     },
+     "received_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Received At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "provider",
+     "event_type",
+     "status",
+     "detail",
+     "meeting_id",
+     "received_at"
+    ],
+    "title": "ProviderEventOut"
    },
    "ProviderModelOut": {
     "properties": {
@@ -9040,6 +10270,28 @@
     ],
     "title": "SourceRefOut"
    },
+   "TestOut": {
+    "properties": {
+     "ok": {
+      "type": "boolean",
+      "title": "Ok"
+     },
+     "message": {
+      "type": "string",
+      "title": "Message"
+     },
+     "connection": {
+      "$ref": "#/components/schemas/ConnectionView"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ok",
+     "message",
+     "connection"
+    ],
+    "title": "TestOut"
+   },
    "TextImportIn": {
     "properties": {
      "text": {
@@ -9455,6 +10707,32 @@
      "rejected"
     ],
     "title": "VerificationStatus"
+   },
+   "app__ai__base__Capability": {
+    "type": "string",
+    "enum": [
+     "translation",
+     "memo_generation",
+     "structured_output",
+     "model_discovery",
+     "streaming",
+     "speech_to_text"
+    ],
+    "title": "Capability"
+   },
+   "app__integrations__capabilities__Capability": {
+    "type": "string",
+    "enum": [
+     "transcript_import",
+     "list_meetings",
+     "post_meeting_transcript",
+     "live_transcript",
+     "live_audio",
+     "speaker_metadata",
+     "meeting_event_notifications",
+     "recovery_after_disconnect"
+    ],
+    "title": "Capability"
    }
   }
  }

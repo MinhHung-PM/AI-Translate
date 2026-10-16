@@ -55,7 +55,21 @@ Base path `/api/v1`. Machine-readable spec: [`docs/openapi.json`](openapi.json) 
 | | `POST /providers/configs/{id}/default`, `DELETE /providers/configs/{id}/key`, `POST /providers/configs/{id}/test` | |
 | Usage | `GET /usage/summary` | totals, by model/operation/project/meeting, `cost_note` |
 | Dashboard | `GET /dashboard` | filters `project_id, date_from, date_to, meeting_status, memo_status, owner` |
-| Connectors | `GET /connectors` | platform integration status (`not_configured` for Teams/Zoom/Meet) |
+| Connectors | `GET /connectors` | per-user platform status summary for the meeting form (derived from the integration view) |
+| Platform integrations (WS2) | `GET /integrations`, `GET /integrations/{provider}` | `ConnectionView`: display status, capabilities, sandbox flag, safe error category — never tokens |
+| | `POST /integrations/{provider}/connect` | → `{authorization_url}`; server-side state + PKCE |
+| | `GET /integrations/{provider}/oauth/callback` | requires the same login session; redirects to `/integrations?provider=&result=connected\|error&category=` |
+| | `POST /integrations/{provider}/test` (rate-limited), `DELETE /integrations/{provider}` | disconnect revokes (best effort) and deletes tokens |
+| | `GET /integrations/{provider}/meetings`, `GET /integrations/{provider}/diagnostics` | list needs capability `list_meetings`; diagnostics = timestamps, categories, recent jobs/events |
+| Meeting source (WS2) | `GET/POST/DELETE /meetings/{id}/external-source` | link `{provider, reference}` (join URL / id / code); 409 if already linked elsewhere (other meeting not revealed) |
+| | `POST /meetings/{id}/external-source/fetch` → 202 Job | `fetch_transcript` job with bounded backoff; 409 when the capability is not available |
+| | `POST /meetings/{id}/external-source/live/start\|stop` | arms/stops provider live ingestion (Zoom RTMS only, when configured) |
+| | `POST /jobs/{id}/retry` | retry a failed retrieval job |
+| Webhooks (WS2) | `POST /integrations/zoom/webhook` | unauthenticated; HMAC signature + timestamp tolerance, size limit, IP rate limit, replay dedup, URL validation |
+
+Integration errors use code `integration_{category}` (e.g. `integration_admin_approval_required`,
+`integration_not_connected`, `integration_invalid_signature`); see
+[`workstream-2-integration-contract.md`](workstream-2-integration-contract.md).
 | Admin | `GET/POST /admin/users`, `PATCH /admin/users/{id}`, `GET /admin/users/lookup` | |
 | | `GET/POST /admin/divisions`, `GET/PUT /admin/division-assignments`, `DELETE /admin/division-assignments/{id}` | |
 | | `GET /admin/audit-events`, `GET /admin/health`, `POST /admin/retention/run` | |

@@ -92,6 +92,37 @@ Only when a user selects a non-mock provider, and only for the operation they st
 Requests go directly from the worker/API to the provider using the user's own key (BYOK); provider-side
 retention is governed by the user's provider account terms. The mock provider sends nothing externally.
 
+## Meeting platform credentials (Workstream 2)
+
+* **Separate from AI keys.** Platform OAuth tokens live in `platform_credentials` (encrypted with the
+  same AES-256-GCM keyring, AAD `platform-credential:{connection}:{user}:{kind}`); they are never stored
+  in `ai_provider_configurations` and never sent to AI providers (`test_tokens_never_exposed`).
+* **Never reach the browser.** The frontend only receives the provider's authorization URL; API
+  responses, diagnostics and logs contain account labels, timestamps and error categories only.
+* **OAuth:** authorization code + PKCE (S256); server-side single-use `state` bound to user, login session
+  and provider with a 10-minute TTL (consumed before validation, so a failed attempt cannot be replayed);
+  redirect URI derived only from `PUBLIC_BASE_URL` (HTTPS required in production); post-callback
+  redirect is a fixed relative path (no open redirect).
+* **Lifecycle:** proactive refresh, refresh-token rotation, one refresh-and-retry on 401, revoke on
+  disconnect, invalid grants surface as *consent revoked* — never retried.
+* **Least privilege:** delegated scopes only (no Graph application permissions); Teams transcript scope is
+  optional (`TEAMS_REQUEST_TRANSCRIPT_SCOPE`). Tenant restrictions and consent are never bypassed; there is
+  no scraping or use of undocumented endpoints.
+* **Webhooks:** HMAC-SHA256 signature over `v0:{timestamp}:{body}` with constant-time compare, timestamp
+  tolerance, body size limit, per-IP rate limit, replay dedup in `provider_events`; events only affect a
+  meeting a permitted user explicitly linked/armed.
+* **Authorization:** linking, retrieval and live control require edit rights on the meeting *and* the
+  caller's own connection; another user's connection is never used.
+* **Provider transcript content is data**: it flows into the same prompt-injection-hardened translation
+  and memo prompts (`test_transcript_prompt_injection_stays_data`).
+* **Sandbox:** `INTEGRATION_ENDPOINT_OVERRIDES` (fake provider server) labels every connection SANDBOX and
+  is refused at startup in production; malformed values fail fast.
+
+### Data sent to meeting platforms
+
+Only the OAuth requests, the meeting reference the user entered (to resolve it), and authenticated read
+requests for the meeting's metadata and transcript. No AI output, other meetings or user data is sent.
+
 ## Logging
 
 Structured JSON logs contain IDs, counts, durations, provider/model names and error codes. Transcript

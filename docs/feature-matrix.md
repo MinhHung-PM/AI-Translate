@@ -2,7 +2,9 @@
 
 Legend: **Tested** = implemented and covered by passing automated tests · **Implemented** = in code,
 exercised manually or partially, no dedicated automated test · **Blocked** = needs credentials or
-permissions not available · **Deferred** = out of scope for Workstream 1.
+permissions not available · **Deferred** = out of scope. For Workstream 2 rows: **Mocked** = implemented
+and tested only against mocked providers / the fake provider server (never a real Microsoft, Zoom or Google
+endpoint) · **Admin approval** = works only after tenant/admin approval · **Not supported** = not offered.
 
 ## Feature matrix
 
@@ -13,7 +15,7 @@ permissions not available · **Deferred** = out of scope for Workstream 1.
 | Auth | OIDC / Microsoft Entra ID login | Implemented / **Blocked** (live test) | needs tenant, client id/secret |
 | AuthZ | Roles, project boundaries, division manager transcript flag, admin no-content | **Tested** | `test_security.py` |
 | Screen 1 | Dashboard (real data, filters, empty states) | **Tested** (API) / Implemented (UI) | `test_workflow.py`, screenshots |
-| Screen 2 | New meeting form, platform status "Integration not configured" | **Tested** | E2E |
+| Screen 2 | New meeting form, truthful platform status (not configured / not linked / available) | **Tested** | E2E, `test_platform_status_is_truthful` |
 | Screen 3 | TXT/SRT/VTT/JSON/plain import, validation, normalization, side-by-side view, search, status filter, editing | **Tested** | `test_unit_transcripts.py`, `test_integration.py`, E2E |
 | Screen 3 | Replay (demo) mode, clearly labelled | **Tested** | `test_integration.py`, E2E |
 | Screen 4 | Full/selected translation, retry failed, chunking, glossary, ambiguity notes, user corrections preserved | **Tested** | `test_integration.py`, `test_security.py`, `test_unit_ai.py` |
@@ -34,20 +36,31 @@ permissions not available · **Deferred** = out of scope for Workstream 1.
 | Ops | Migrations up/down | **Tested** | `test_integration.py`, `alembic check` |
 | Ops | Docker Compose (db, migrate, api, worker, web) | **Verified** (see note) | E2E passed against containers |
 | i18n | Vietnamese UI, typed dictionary for more locales | Implemented | — |
-| WS2 | Teams / Zoom / Meet live audio, Graph transcripts, auto-join, outbound voice, Jira/ADO/SharePoint | **Deferred** | `workstream-2-integration-contract.md` |
+| WS2 framework | Connector contract, typed capabilities, canonical event, dedup/ordering, bounded retry, OAuth (state+PKCE, encrypted tokens, rotation, revoke) | **Tested** | `test_integrations_unit.py`, `test_integrations_security.py` |
+| WS2 UI | `/integrations` cards + wizard + diagnostics, meeting source selector, provider-aware live view | **Tested** (E2E, sandbox) | `e2e/workstream2-integrations.spec.ts`, `permission-status.test.ts` |
+| Teams | Transcript import (VTT) | **Tested** | WS1 tests |
+| Teams | OAuth (delegated), list meetings, resolve join URL | **Mocked** | `test_teams_oauth_link_fetch_translate_memo` |
+| Teams | Post-meeting transcript via Graph | **Mocked** · **Admin approval** (`OnlineMeetingTranscript.Read.All`) | `test_teams_*` |
+| Teams | Live transcript / live audio | **Not supported** (needs application permission + media bot) | `test_teams_live_is_never_offered` |
+| Zoom | OAuth, recordings list, post-meeting transcript, signed webhooks | **Mocked** | `test_zoom_*`, `test_webhook_signature_and_replay_protection`, browser E2E |
+| Zoom | Live transcript (RTMS, official SDK) | **Mocked** · requires RTMS provisioning | `test_live_rtms_ingestion_end_to_end` |
+| Google Meet | OAuth, conference records, post-meeting transcript entries + participants | **Mocked** | `test_google_meet_*` |
+| Google Meet | Live transcript / live audio | **Not supported** (Media API preview, no transcripts) | `test_live_never_available_for_teams_and_meet_even_with_all_scopes` |
+| WS2 | Real-provider verification (any platform) | **Blocked** — no tenant/account credentials | [`integrations/`](integrations/) |
+| Later | Auto-join bots, outbound voice, Jira/ADO/SharePoint | **Deferred** | backlog |
 
 ## Verification run (this delivery)
 
 | Check | Command | Result |
 |---|---|---|
-| Backend tests | `cd backend && pytest` | **125 passed** |
+| Backend tests | `cd backend && pytest` | **201 passed** (WS1 + 76 WS2) |
 | Lint / format | `ruff check app tests alembic`, `ruff format --check` | clean |
-| Types | `mypy app` (strict) | no issues (69 files) |
-| Migrations | `alembic upgrade head` / `downgrade base` / `alembic check` | ok, no drift |
+| Types | `mypy app` (strict) | no issues (97 files) |
+| Migrations | `alembic upgrade head` / `downgrade base` / `alembic check` | ok, no drift; 0002 up/down/up verified on a database with WS1 data |
 | Python deps | `pip-audit` | no known vulnerabilities |
-| Frontend | `npm run lint`, `npm run typecheck`, `npm test` (7), `npm run build` | clean / pass |
+| Frontend | `npm run lint`, `npm run typecheck`, `npm test` (9), `npm run build` | clean / pass |
 | Node deps | `npm audit --omit=dev` | 0 vulnerabilities (5 high in dev-only ESLint toolchain, see risks) |
-| E2E | `npx playwright test` (3 specs) | **3 passed** against local servers and against Docker Compose |
+| E2E | `npx playwright test` (5 tests) | **5 passed** (twice in a row) against local servers + fake provider server; WS1's 3 tests also passed earlier against Docker Compose |
 
 Docker note: images were built from the committed Dockerfiles with this sandbox's HTTPS proxy and CA
 injected into scratch copies (the sandbox blocks direct registry access from build containers and Docker
@@ -80,12 +93,26 @@ A normal `docker compose up --build` on a developer machine needs no such change
 12. **Translation context** uses only two preceding lines; discourse-level consistency across chunks
     relies on the glossary.
 
-## Prioritized Workstream 2 backlog
+### Workstream 2
 
-1. Microsoft Teams: Entra app + Graph transcript retrieval (post-meeting), mapped to meetings via join URL; change-notification webhook → `ingest_event`.
+13. **No platform verified against a real provider.** Teams, Zoom and Google Meet are tested only with
+    mocks built from official API references (docs sites were unreachable from the build environment;
+    official GitHub sources were used). See `docs/integrations/*.md` → *Unresolved*.
+14. **Teams post-meeting transcripts require admin consent**; without it the product degrades to import.
+15. **Zoom scopes are configuration** (`ZOOM_SCOPES`) because exact granular names were not verifiable.
+16. **Zoom RTMS is not lossless**: a dropped stream marks the session *interrupted*; missing segments come
+    from the post-meeting transcript.
+17. **A platform meeting can be linked to only one hub meeting** (prevents duplicate ingestion); a second
+    team wanting the same transcript must import the file.
+18. **Live updates are polled** (1 s); the realtime ingestion thread runs in the worker process — run a
+    single worker for RTMS sessions or pin them (multi-worker coordination is backlog).
+
+## Prioritized backlog (after Workstream 2)
+
+1. Verify Teams, Zoom (incl. RTMS) and Google Meet against real tenants/accounts; record results in `docs/integrations/`.
 2. Production OIDC hardening: test with Entra tenant, group → role mapping, session revocation on IdP logout.
-3. Zoom RTMS connector (live transcript) + cloud-recording VTT fetch.
-4. Google Meet transcripts via Meet REST API / Workspace Events.
+3. Teams transcript change notifications (needs application permission + application access policy) and Google Workspace Events (Pub/Sub) instead of polling.
+4. Multi-worker coordination for live sessions; SSE/WebSocket push instead of polling.
 5. Hierarchical (map-reduce) memo generation for long meetings.
 6. Redis-backed rate limiter and job notifications (SSE/WebSocket) for multi-replica deployments.
 7. Live interim captions UX (show `is_final=false` without persisting).

@@ -35,7 +35,10 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version="1.0.0",
-        description="Workstream 1 (Product Core) API. All endpoints are under /api/v1.",
+        description=(
+            "Product Core (Workstream 1) and meeting-platform integrations (Workstream 2) API. "
+            "All endpoints are under /api/v1."
+        ),
         openapi_url="/api/v1/openapi.json",
         docs_url="/api/docs",
         redoc_url=None,

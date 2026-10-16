@@ -77,6 +77,11 @@ def test_zoom_live_requires_operator_configuration(fake, monkeypatch):
     caps = {c.capability: c for c in zoom.get_capabilities(set(), True)}
     assert caps[Capability.live_transcript].status == CapabilityStatus.requires_configuration
     assert "ZOOM_WEBHOOK_SECRET_TOKEN" in caps[Capability.live_transcript].message
+    monkeypatch.setattr(get_settings(), "zoom_webhook_secret_token", "zoom-webhook-secret")
+    monkeypatch.setattr("app.integrations.zoom.connector.rtms_sdk_available", lambda: False)
+    caps = {c.capability: c for c in zoom.get_capabilities(set(), True)}
+    assert caps[Capability.live_transcript].status == CapabilityStatus.requires_configuration
+    assert "rtms" in caps[Capability.live_transcript].message
 
 
 # ---- dedup / ordering / normalization ------------------------------------------------
