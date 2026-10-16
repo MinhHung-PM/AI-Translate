@@ -223,3 +223,20 @@ def test_production_refuses_endpoint_overrides():
 def test_sandbox_label_is_reported(pm, fake):
     for row in pm.get("/integrations").json():
         assert row["sandbox"] is True  # overrides active => never presented as a real connection
+
+
+def test_production_refuses_browser_endpoint_overrides():
+    from app.core.config import Settings
+
+    with pytest.raises(RuntimeError, match="INTEGRATION_BROWSER_ENDPOINT_OVERRIDES"):
+        Settings(
+            environment="production",
+            auth_mode="oidc",
+            oidc_issuer="i",
+            oidc_client_id="c",
+            oidc_client_secret="s",
+            oidc_redirect_uri="r",
+            trusted_hosts=["x"],
+            enable_mock_provider=False,
+            integration_browser_endpoint_overrides=json.dumps({"zoom": "http://localhost:9100/zoom"}),
+        ).validate_for_environment()

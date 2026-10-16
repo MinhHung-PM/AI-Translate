@@ -11,7 +11,8 @@ decisions, action items, issues and risks — each traceable to the original tra
 > real Microsoft, Zoom or Google account yet** — it is tested against mocks and a fake provider server
 > (shown as **SANDBOX** in the UI). Teams transcripts need tenant admin consent; Teams/Meet live is not
 > supported. Transcript file import always works. Status per provider: [`docs/integrations/`](docs/integrations/)
-> · plan: [`docs/workstream-2-plan.md`](docs/workstream-2-plan.md). The replay view remains an explicitly
+> · plan: [`docs/workstream-2-plan.md`](docs/workstream-2-plan.md). **Try it without accounts:**
+> `./start.sh sandbox` (fake providers, dev only) — guide: [`docs/integrations/sandbox-vi.md`](docs/integrations/sandbox-vi.md). The replay view remains an explicitly
 > labelled **demo**.
 
 ## Contents
@@ -33,6 +34,10 @@ Cần cài và mở **Docker Desktop**, sau đó trong thư mục dự án:
   `powershell -ExecutionPolicy Bypass -File .\start.ps1`
 
 Script tự tạo `.env` kèm khóa mã hóa, build, khởi động và mở <http://localhost:3000>.
+
+**Thử tích hợp Teams / Zoom / Google Meet mà không cần tài khoản thật:** `./start.sh sandbox`
+(Windows: `.\start.ps1 sandbox`). Lệnh này chạy thêm máy chủ giả lập, gắn nhãn SANDBOX và chỉ dùng để
+thử nghiệm. Hướng dẫn từng bước: [`docs/integrations/sandbox-vi.md`](docs/integrations/sandbox-vi.md).
 
 ## Quick start (Docker Compose)
 
@@ -114,6 +119,7 @@ See [`.env.example`](.env.example) for the full annotated list. Most important:
 | `PUBLIC_BASE_URL` | `http://localhost:3000` | external URL; OAuth redirect = `{PUBLIC_BASE_URL}/api/v1/integrations/{provider}/oauth/callback` |
 | `TEAMS_*`, `ZOOM_*`, `GOOGLE_*` | empty | platform OAuth apps — see [`.env.example`](.env.example) and `docs/integrations/` |
 | `INTEGRATION_ENDPOINT_OVERRIDES` | empty | **dev/test only**: fake provider server; marks connections SANDBOX, refused in production |
+| `INTEGRATION_BROWSER_ENDPOINT_OVERRIDES` | empty | **dev/test only**: browser-facing address of the fake server's authorize page (Docker sandbox) |
 | `BACKEND_URL` (frontend) | `http://localhost:8000` | proxy target, server-side only (build-time for `next build`) |
 
 ## Database migrations

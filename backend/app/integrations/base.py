@@ -87,8 +87,8 @@ class Connector(ABC):
     def is_configured(self) -> bool:
         return not self.configuration_problems()
 
-    def override_base(self) -> str | None:
-        raw = get_settings().integration_endpoint_overrides.strip()
+    def override_base(self, raw: str | None = None) -> str | None:
+        raw = (get_settings().integration_endpoint_overrides if raw is None else raw).strip()
         if not raw:
             return None
         try:
@@ -135,7 +135,10 @@ class Connector(ABC):
         if self.supports_pkce:
             params["code_challenge"] = code_challenge
             params["code_challenge_method"] = "S256"
-        return f"{self.endpoint('authorize')}?{urllib.parse.urlencode(params)}"
+        # Sandbox only: the browser may need a different host for the fake provider than the API does.
+        browser_base = self.override_base(get_settings().integration_browser_endpoint_overrides)
+        authorize = f"{browser_base}/authorize" if browser_base and self.is_sandbox() else self.endpoint("authorize")
+        return f"{authorize}?{urllib.parse.urlencode(params)}"
 
     @abstractmethod
     def client_id(self) -> str: ...

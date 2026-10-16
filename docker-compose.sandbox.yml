@@ -1,0 +1,45 @@
+# SANDBOX (DEV/TEST ONLY): adds a FAKE Teams / Zoom / Google Meet server so the platform-integration
+# flow can be tried without real accounts. Every connection is labelled SANDBOX in the UI and nothing
+# is sent to Microsoft, Zoom or Google. Never use in production (the API refuses to start).
+#   ./start.sh sandbox        (Windows: .\start.ps1 sandbox)
+#   docker compose -f docker-compose.yml -f docker-compose.sandbox.yml up --build -d
+x-sandbox-env: &sandbox-env
+  TEAMS_CLIENT_ID: teams-client
+  TEAMS_CLIENT_SECRET: fake-secret
+  ZOOM_CLIENT_ID: zoom-client
+  ZOOM_CLIENT_SECRET: fake-secret
+  ZOOM_WEBHOOK_SECRET_TOKEN: zoom-webhook-secret
+  ZOOM_RTMS_ENABLED: "false"
+  GOOGLE_CLIENT_ID: google-client
+  GOOGLE_CLIENT_SECRET: fake-secret
+  PUBLIC_BASE_URL: http://localhost:3000
+  # API/worker → fake server inside the Docker network
+  INTEGRATION_ENDPOINT_OVERRIDES: '{"teams":"http://fake-providers:9100/teams","zoom":"http://fake-providers:9100/zoom","google_meet":"http://fake-providers:9100/google"}'
+  # Browser → fake server's "authorize" page through the published port
+  INTEGRATION_BROWSER_ENDPOINT_OVERRIDES: '{"teams":"http://localhost:9100/teams","zoom":"http://localhost:9100/zoom","google_meet":"http://localhost:9100/google"}'
+
+services:
+  fake-providers:
+    build: ./backend
+    image: memohub-backend:local
+    volumes:
+      - ./backend/tests:/app/tests:ro
+    command: ["python", "-m", "tests.fakes.server", "--host", "0.0.0.0", "--port", "9100", "--public-base", "http://fake-providers:9100"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:9100:9100"
+
+  api:
+    environment:
+      <<: *sandbox-env
+    depends_on:
+      fake-providers:
+        condition: service_started
+
+  worker:
+    environment:
+      <<: *sandbox-env

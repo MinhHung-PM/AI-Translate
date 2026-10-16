@@ -59,8 +59,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9100)
+    parser.add_argument("--public-base", default="", help="URL other services use to reach this server")
     args = parser.parse_args()
-    base = f"http://{args.host}:{args.port}"
+    base = args.public_base.rstrip("/") or f"http://{args.host}:{args.port}"
     print(f"Fake providers (DEV/TEST ONLY) on {base}\nINTEGRATION_ENDPOINT_OVERRIDES='{overrides_json(base)}'")  # noqa: T201
     uvicorn.run(create_app(base), host=args.host, port=args.port, log_level="warning")
 

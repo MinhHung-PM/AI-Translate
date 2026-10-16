@@ -119,8 +119,11 @@ class Settings(BaseSettings):
     # Development/test only: point connectors at a fake provider server. Any
     # override marks every connection as SANDBOX and is refused in production.
     integration_endpoint_overrides: str = ""  # JSON object, e.g. {"google_meet": "http://localhost:9100/google"}
+    # Development/test only: base URLs the *browser* uses for the authorize step when it differs from the
+    # address the API uses (e.g. Docker: browser → localhost:9100, API → fake-providers:9100).
+    integration_browser_endpoint_overrides: str = ""
 
-    @field_validator("integration_endpoint_overrides")
+    @field_validator("integration_endpoint_overrides", "integration_browser_endpoint_overrides")
     @classmethod
     def _valid_overrides(cls, value: str) -> str:
         # Fail fast: a malformed value must never silently fall back to real endpoints.
@@ -128,9 +131,9 @@ class Settings(BaseSettings):
             try:
                 mapping = json.loads(value)
             except json.JSONDecodeError as exc:
-                raise ValueError("INTEGRATION_ENDPOINT_OVERRIDES must be a JSON object") from exc
+                raise ValueError("INTEGRATION_*ENDPOINT_OVERRIDES must be a JSON object") from exc
             if not isinstance(mapping, dict) or not all(isinstance(v, str) for v in mapping.values()):
-                raise ValueError("INTEGRATION_ENDPOINT_OVERRIDES must map provider names to base URLs")
+                raise ValueError("INTEGRATION_*ENDPOINT_OVERRIDES must map provider names to base URLs")
         return value
 
     @field_validator("cors_allowed_origins", "trusted_hosts", "provider_base_url_allowlist", mode="before")
@@ -171,6 +174,8 @@ class Settings(BaseSettings):
             problems.append("ALLOW_PRIVATE_PROVIDER_URLS must be false in production")
         if self.integration_endpoint_overrides.strip():
             problems.append("INTEGRATION_ENDPOINT_OVERRIDES must be empty in production")
+        if self.integration_browser_endpoint_overrides.strip():
+            problems.append("INTEGRATION_BROWSER_ENDPOINT_OVERRIDES must be empty in production")
         if self.enable_mock_provider:
             problems.append("ENABLE_MOCK_PROVIDER must be false in production")
         if problems:

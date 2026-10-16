@@ -289,5 +289,22 @@ def test_malformed_endpoint_overrides_fail_fast():
 
     from app.core.config import Settings
 
-    with pytest.raises(ValidationError, match="INTEGRATION_ENDPOINT_OVERRIDES"):
+    with pytest.raises(ValidationError, match="integration_endpoint_overrides"):
         Settings(integration_endpoint_overrides="{teams:http://fake}")
+    with pytest.raises(ValidationError, match="integration_browser_endpoint_overrides"):
+        Settings(integration_browser_endpoint_overrides="[1]")
+
+
+def test_browser_authorize_override_only_in_sandbox(fake, monkeypatch):
+    import urllib.parse
+
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(
+        get_settings(), "integration_browser_endpoint_overrides", '{"zoom": "http://localhost:9100/zoom"}'
+    )
+    url = get_connector("zoom").begin_authorization("st", "ch", "http://localhost:3000/cb")
+    assert url.startswith("http://localhost:9100/zoom/authorize?")
+    assert urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["state"] == ["st"]
+    # Token/API calls still use the server-side override.
+    assert get_connector("zoom").endpoint("token") == "http://fake.local/zoom/token"
