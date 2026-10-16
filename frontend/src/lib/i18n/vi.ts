@@ -7,6 +7,7 @@ export const vi = {
   nav: {
     dashboard: "Tổng quan",
     newMeeting: "Cuộc họp mới",
+    liveTranslate: "Dịch trực tiếp",
     history: "Lịch sử cuộc họp",
     actions: "Theo dõi công việc",
     projects: "Dự án",
@@ -492,6 +493,20 @@ export const vi = {
     linked: "Đã liên kết",
     hasTranscript: "có transcript",
     openLive: "Mở màn hình trực tiếp →",
+  },
+  liveTranslate: {
+    title: "Dịch trực tiếp từ âm thanh",
+    subtitle: "Thu âm thanh trên máy (micro, âm thanh cuộc họp Teams/Zoom/Meet), nhận dạng giọng nói, tách người nói và dịch ngay.",
+    quickStart: "Bắt đầu nhanh",
+    titleLabel: "Tên buổi họp (tùy chọn)",
+    titlePlaceholder: "Ví dụ: Họp với khách hàng Sakura",
+    defaultTitle: "Dịch trực tiếp",
+    spoken: "Ngôn ngữ người nói",
+    translateTo: "Dịch sang",
+    howItWorks: "Bấm nút bên dưới → hệ thống tạo cuộc họp và mở màn hình thu âm. Ở đó chọn nguồn âm thanh (âm thanh cuộc họp và/hoặc micro), tick xác nhận rồi bấm \"Bắt đầu thu âm\".",
+    startNow: "Bắt đầu dịch trực tiếp",
+    existing: "Hoặc mở màn hình trực tiếp của cuộc họp gần đây",
+    openLive: "Thu âm & dịch →",
   },
   audio: {
     tab: "Thu âm trực tiếp",

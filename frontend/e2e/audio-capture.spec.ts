@@ -54,15 +54,12 @@ test("Capture microphone audio → recognised, speaker-labelled and translated l
   await page.getByRole("button", { name: "Đăng nhập" }).click();
   await expect(page.getByRole("heading", { name: "Tổng quan" })).toBeVisible();
 
-  const title = `Audio E2E ${Date.now()}`;
-  await page.getByRole("link", { name: "Cuộc họp mới" }).first().click();
-  await page.getByLabel("Tiêu đề cuộc họp").filter({ visible: true }).fill(title);
-  const projectSelect = page.locator('select[name="project_id"]');
-  await projectSelect.selectOption((await projectSelect.locator("option", { hasText: /ALPHA/ }).first().getAttribute("value")) ?? "");
-  await page.getByRole("button", { name: "Tạo cuộc họp" }).click();
-  await expect(page.getByRole("heading", { name: title })).toBeVisible();
-
-  await page.getByRole("link", { name: "Trực tiếp / Phát lại" }).click();
+  // Entry point: "Dịch trực tiếp" in the main menu → one-click start.
+  await page.getByRole("link", { name: "Dịch trực tiếp" }).first().click();
+  await expect(tid(page, "live-quick-start")).toBeVisible();
+  await tid(page, "live-project").selectOption({ label: (await tid(page, "live-project").locator("option", { hasText: /ALPHA/ }).first().textContent()) ?? "" });
+  await tid(page, "live-start-now").click();
+  await expect(page).toHaveURL(/\/meetings\/[0-9a-f-]+\/live$/);
   await expect(tid(page, "audio-capture")).toBeVisible();
   await expect(tid(page, "start-audio")).toBeDisabled();
 

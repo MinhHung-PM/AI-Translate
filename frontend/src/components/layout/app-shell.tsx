@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { BarChart3, ClipboardList, FolderKanban, History, LayoutDashboard, LogOut, PlusCircle,
-  Plug, Settings, Shield } from "lucide-react";
+  Mic, Plug, Settings, Shield } from "lucide-react";
 import { Spinner, cn } from "@/components/ui";
 import { t } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 
 const NAV = [
   { href: "/", label: t.nav.dashboard, icon: LayoutDashboard },
+  { href: "/live", label: t.nav.liveTranslate, icon: Mic },
   { href: "/meetings/new", label: t.nav.newMeeting, icon: PlusCircle },
   { href: "/meetings", label: t.nav.history, icon: History },
   { href: "/actions", label: t.nav.actions, icon: ClipboardList },

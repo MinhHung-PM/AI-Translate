@@ -35,9 +35,16 @@ export default function DashboardPage() {
       <PageHeader
         title={t.dashboard.title}
         actions={
-          <Link href="/meetings/new">
-            <Button variant="primary">{t.nav.newMeeting}</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/live">
+              <Button variant="primary" data-testid="dashboard-live">
+                {t.nav.liveTranslate}
+              </Button>
+            </Link>
+            <Link href="/meetings/new">
+              <Button>{t.nav.newMeeting}</Button>
+            </Link>
+          </div>
         }
       />
       <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-line bg-white p-3 md:grid-cols-6">

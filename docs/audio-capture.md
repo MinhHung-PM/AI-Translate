@@ -14,7 +14,7 @@ Trình duyệt (Chrome/Edge)
   nguồn 1: Âm thanh cuộc họp  ← getDisplayMedia: "Toàn màn hình + Chia sẻ âm thanh hệ thống"
                                 (ứng dụng Teams/Zoom) hoặc "Tab + Chia sẻ âm thanh tab" (họp trên web)
   nguồn 2..n: Micro            ← getUserMedia (chọn thiết bị cụ thể; có khử vọng/khử ồn)
-      │ AudioWorklet → trộn mono → 16 kHz → phát hiện giọng nói (VAD) → mỗi câu 0,3–15 giây
+      │ AudioWorklet → trộn mono → 16 kHz → phát hiện giọng nói (VAD) → mỗi câu 0,3–8 giây
       ▼ POST /audio-sessions/{id}/chunks  (WAV PCM 16-bit, tuần tự theo từng nguồn)
 Máy chủ
   OpenAI gpt-4o-transcribe-diarize (response_format=diarized_json)
@@ -36,8 +36,9 @@ Máy chủ
 
 ### Độ trễ
 
-Thời gian người nói dứt câu (VAD chờ 0,7 s im lặng) + nhận dạng (thường 1–3 s) + dịch (1–2 s) + tối đa
-1 s cập nhật màn hình ≈ **3–6 giây** sau khi dứt câu. Câu dài bị cắt mỗi 15 giây để chữ hiện sớm.
+Thời gian người nói dứt câu (VAD chờ 0,5 s im lặng) + nhận dạng (thường 1–3 s, ước tính) + dịch (1–2 s) ≈
+**2–5 giây** sau khi dứt câu; màn hình cập nhật ngay khi có kết quả. Người nói liên tục bị cắt mỗi 8 giây
+để chữ hiện sớm. (Ước tính — chưa đo với OpenAI thật.)
 
 ## Cấu hình
 

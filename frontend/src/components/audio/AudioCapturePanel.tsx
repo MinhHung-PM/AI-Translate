@@ -178,6 +178,7 @@ export function AudioCapturePanel({ meetingId, session, onChanged }: { meetingId
         c.sent += 1;
         c.lastError = null;
         if (r.note) setNote(r.note);
+        if (r.entries.length) onChanged(); // refresh the live feed now instead of at the next poll
         return;
       } catch (err) {
         const retryAfter = err instanceof ApiError ? Number(err.details?.retry_after_seconds ?? 0) : 0;
