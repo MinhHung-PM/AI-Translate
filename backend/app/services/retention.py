@@ -15,7 +15,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
-from app.models import Meeting, Project, TranscriptEntry
+from app.models import Meeting, PlatformOAuthState, Project, ProviderEvent, TranscriptEntry
 
 SOFT_DELETE_GRACE = timedelta(days=30)
 
@@ -48,3 +48,15 @@ def enforce_retention(db: Session) -> dict[str, int]:
         "entries_purged": purged_entries,
         "meetings_hard_deleted": int(getattr(hard, "rowcount", 0) or 0),
     }
+
+
+PROVIDER_EVENT_RETENTION = timedelta(days=30)
+
+
+def purge_provider_events(db: Session) -> int:
+    """Webhook event log (no transcript content) is kept 30 days for replay
+    protection and diagnostics; stale OAuth states are removed too."""
+    now = utcnow()
+    db.execute(delete(PlatformOAuthState).where(PlatformOAuthState.created_at < now - timedelta(hours=1)))
+    result = db.execute(delete(ProviderEvent).where(ProviderEvent.received_at < now - PROVIDER_EVENT_RETENTION))
+    return int(getattr(result, "rowcount", 0) or 0)

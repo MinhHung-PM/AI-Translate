@@ -10,6 +10,7 @@ from sqlalchemy.orm import contains_eager
 from app.api.deps import DB, Auth, AuthContext, ai_rate_limit
 from app.core.config import get_settings
 from app.core.errors import Conflict, NotFound, PayloadTooLarge, ValidationFailed
+from app.integrations.models import CanonicalEvent
 from app.models import Job, LiveSession, Meeting, TranscriptEntry, TranscriptImport, Translation
 from app.models.enums import (
     JobKind,
@@ -340,19 +341,21 @@ def start_replay(
         parsed = parse_upload(data=None, text=text, filename=None, declared_format=TranscriptFormat.text)
     else:
         raise ValidationFailed("Provide a file or text to replay")
+    # Same canonical event model that real platform connectors emit (demo-flagged).
     events = [
-        {
-            "connector": "replay",
-            "is_demo": True,
-            "external_id": f"replay-{i}",
-            "speaker": e.speaker,
-            "start_ms": e.start_ms,
-            "end_ms": e.end_ms,
-            "text": e.text,
-            "language": e.language.value if e.language else None,
-            "is_final": True,
-            "metadata": {k: v for k, v in e.metadata.items() if isinstance(v, (str, int, float, bool))},
-        }
+        CanonicalEvent(
+            provider="replay",
+            provider_meeting_id=f"replay:{meeting.id}",
+            entry_id=f"replay-{i}",
+            is_demo=True,
+            speaker_display_name=e.speaker,
+            start_timestamp_ms=e.start_ms,
+            end_timestamp_ms=e.end_ms,
+            original_text=e.text,
+            source_language=e.language,
+            provider_sequence=i,
+            source_metadata={k: v for k, v in e.metadata.items() if isinstance(v, (str, int, float, bool))},
+        ).model_dump(mode="json")
         for i, e in enumerate(parsed.entries, start=1)
     ]
     live = LiveSession(

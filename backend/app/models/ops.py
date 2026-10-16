@@ -68,7 +68,7 @@ class SessionSecret(UUIDPk, Base):
 
 class Job(UUIDPk, Base):
     __tablename__ = "jobs"
-    __table_args__ = (Index("ix_jobs_status_created", "status", "created_at"),)
+    __table_args__ = (Index("ix_jobs_status_created", "status", "created_at"), Index("ix_jobs_run_after", "run_after"))
 
     kind: Mapped[JobKind] = mapped_column(db_enum(JobKind, "job_kind"))
     status: Mapped[JobStatus] = mapped_column(db_enum(JobStatus, "job_status"), default=JobStatus.queued)
@@ -98,6 +98,8 @@ class Job(UUIDPk, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # WS2: earliest time the job may run (bounded backoff / Retry-After).
+    run_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class UsageRecord(UUIDPk, Base):

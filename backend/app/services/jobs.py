@@ -12,7 +12,7 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -60,7 +60,7 @@ def enqueue(
 def claim_next(db: Session, worker_id: str) -> Job | None:
     job = db.scalar(
         select(Job)
-        .where(Job.status == JobStatus.queued)
+        .where(Job.status == JobStatus.queued, or_(Job.run_after.is_(None), Job.run_after <= utcnow()))
         .order_by(Job.created_at)
         .with_for_update(skip_locked=True)
         .limit(1)

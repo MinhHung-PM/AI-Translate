@@ -7,10 +7,11 @@ from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api.v1 import admin, auth, meetings, memos, misc, projects, providers, transcripts
+from app.api.v1 import admin, auth, integrations, meetings, memos, misc, projects, providers, transcripts
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
+from app.integrations.errors import IntegrationError
 
 
 @asynccontextmanager
@@ -42,6 +43,10 @@ def create_app() -> FastAPI:
     )
     install_error_handlers(app)
 
+    @app.exception_handler(IntegrationError)
+    async def _integration_error(_: Request, exc: IntegrationError) -> Response:
+        return integrations.integration_error_response(exc)
+
     if settings.trusted_hosts and "*" not in settings.trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
     if settings.cors_allowed_origins:
@@ -69,7 +74,7 @@ def create_app() -> FastAPI:
         return response
 
     api = APIRouter(prefix="/api/v1")
-    for module in (auth, projects, meetings, transcripts, memos, providers, misc, admin):
+    for module in (auth, projects, meetings, transcripts, memos, providers, misc, admin, integrations):
         api.include_router(module.router)
     api.include_router(misc.health_router)
     app.include_router(api)

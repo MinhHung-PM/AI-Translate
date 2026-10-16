@@ -20,6 +20,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Official Zoom Realtime Media Streams SDK (MIT). Only needed for live Zoom ingestion.
+zoom-rtms = ["rtms==1.1.0"]
 dev = [
   "pytest==9.1.1",
   "pytest-cov==7.1.0",
@@ -46,6 +48,7 @@ ignore = ["S101", "B008", "S311"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106"]
 "app/seed.py" = ["S105", "S106"]
+"app/integrations/errors.py" = ["S105"]  # enum value "token_expired" is not a secret
 "alembic/versions/*" = ["E501"]
 "app/services/export.py" = ["E501"]  # inline CSS in the HTML export template
 

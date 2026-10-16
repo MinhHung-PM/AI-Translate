@@ -111,7 +111,11 @@ class TranscriptEntry(UUIDPk, Timestamps, Base):
     never synthesized when the source does not contain them."""
 
     __tablename__ = "transcript_entries"
-    __table_args__ = (UniqueConstraint("meeting_id", "sequence", name="uq_transcript_entry_seq"),)
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "sequence", name="uq_transcript_entry_seq"),
+        # WS2: idempotent ingestion of provider events (NULL for file imports).
+        UniqueConstraint("meeting_id", "dedup_key", name="uq_transcript_entry_dedup"),
+    )
 
     meeting_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE"), index=True
@@ -127,6 +131,7 @@ class TranscriptEntry(UUIDPk, Timestamps, Base):
     source_language: Mapped[Language | None] = mapped_column(db_enum(Language, "source_language"))
     original_edited: Mapped[bool] = mapped_column(Boolean, default=False)
     source_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    dedup_key: Mapped[str | None] = mapped_column(String(128))
 
     translations: Mapped[list[Translation]] = relationship(back_populates="entry", cascade="all, delete-orphan")
 
@@ -177,6 +182,14 @@ class LiveSession(UUIDPk, Base):
         db_enum(LiveSessionStatus, "live_session_status"), default=LiveSessionStatus.running
     )
     job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="SET NULL"))
+    provider_session_id: Mapped[str | None] = mapped_column(String(255))
+    reconnect_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status_message: Mapped[str | None] = mapped_column(String(500))
+    # Login session of the user who armed the live source (resolves session-only AI keys).
+    requested_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user_sessions.id", ondelete="SET NULL")
+    )
     entries_total: Mapped[int] = mapped_column(Integer, default=0)
     entries_emitted: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -177,3 +177,47 @@ def upload_sample(client: ApiClient, meeting_id: str, name: str = "ja_client_mee
         files={"file": (name, data)},
         data={k: str(v).lower() if isinstance(v, bool) else v for k, v in form.items()},
     )
+
+
+# ---- Workstream 2: fake platform providers (contract fixtures, no network) ----------
+
+
+@pytest.fixture
+def fake(monkeypatch: Any) -> Any:
+    import httpx
+
+    from app.core.config import get_settings
+    from app.integrations.http import set_transport_override
+    from tests.fakes.fake_providers import FakeProviders, overrides_json
+
+    providers = FakeProviders()
+    s = get_settings()
+    for key, value in {
+        "teams_client_id": "teams-client",
+        "teams_client_secret": "fake-secret",
+        "zoom_client_id": "zoom-client",
+        "zoom_client_secret": "fake-secret",
+        "zoom_webhook_secret_token": "zoom-webhook-secret",
+        "zoom_rtms_enabled": True,
+        "google_client_id": "google-client",
+        "google_client_secret": "fake-secret",
+        "integration_endpoint_overrides": overrides_json(providers.base_url),
+        "public_base_url": "http://localhost:3000",
+    }.items():
+        monkeypatch.setattr(s, key, value)
+    set_transport_override(httpx.MockTransport(providers.handle))
+    yield providers
+    set_transport_override(None)
+
+
+def connect_platform(client: ApiClient, fake: Any, provider: str) -> Any:
+    """Run the real OAuth flow against the fake provider: begin → provider redirect → callback."""
+    import urllib.parse
+
+    r = client.post(f"/integrations/{provider}/connect")
+    assert r.status_code == 200, r.text
+    url = urllib.parse.urlparse(r.json()["authorization_url"])
+    params = dict(urllib.parse.parse_qsl(url.query))
+    back = urllib.parse.urlparse(fake.authorize_redirect({"google_meet": "google"}.get(provider, provider), params))
+    cb = client.client.get(f"{back.path}?{back.query}", follow_redirects=False)
+    return cb, params

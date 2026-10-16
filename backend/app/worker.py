@@ -22,19 +22,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.base import ProviderError
-from app.connectors.base import TranscriptEvent
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, log_event
 from app.db.base import utcnow
 from app.db.session import get_sessionmaker
+from app.integrations.errors import IntegrationError
+from app.integrations.models import CanonicalEvent
+from app.integrations.orchestration.connection_manager import recover_interrupted, run_realtime
+from app.integrations.orchestration.external_source_service import run_fetch
 from app.models import Job, LiveSession, Meeting, Memo, Project, TranscriptEntry
 from app.models.enums import JobKind, JobStatus, Language, LiveSessionStatus, MemoStatus, TranslationStatus
 from app.services import jobs as job_service
 from app.services.ingestion import ingest_event
 from app.services.memo_generation import MemoGenerationFailed, run_memo_generation
 from app.services.provider_config import resolve_provider
-from app.services.retention import enforce_retention
+from app.services.retention import enforce_retention, purge_provider_events
 from app.services.sessions import purge_expired_sessions
 from app.services.translation import translate_entries
 
@@ -142,7 +145,7 @@ def handle_replay(db: Session, job: Job, sleep: Callable[[float], None] = time.s
         db.refresh(live)
         if live.status != LiveSessionStatus.running:
             break
-        entry = ingest_event(db, meeting, TranscriptEvent.model_validate(raw))
+        entry, _ = ingest_event(db, meeting, CanonicalEvent.model_validate(raw))
         live.entries_emitted += 1
         emitted += 1
         job_service.heartbeat(db, job, emitted, len(events))
@@ -171,6 +174,8 @@ HANDLERS: dict[JobKind, Callable[[Session, Job], dict[str, Any]]] = {
     JobKind.translation: handle_translate,
     JobKind.generate_memo: handle_generate_memo,
     JobKind.replay: handle_replay,
+    JobKind.fetch_transcript: run_fetch,
+    JobKind.realtime_ingest: run_realtime,
 }
 
 
@@ -178,7 +183,16 @@ def execute(db: Session, job: Job) -> None:
     started = time.monotonic()
     try:
         result = HANDLERS[job.kind](db, job)
+        db.flush()
         db.refresh(job)
+        if job.run_after is not None and job.run_after > utcnow():
+            # Handler asked to be retried later (bounded backoff): back to the queue.
+            job.status = JobStatus.queued
+            job.locked_by = None
+            job.result = result
+            db.commit()
+            log_event(logger, "job.rescheduled", job_id=str(job.id), kind=job.kind.value)
+            return
         job_service.finish(db, job, result)
         db.commit()
         log_event(
@@ -188,9 +202,9 @@ def execute(db: Session, job: Job) -> None:
             kind=job.kind.value,
             duration_ms=int((time.monotonic() - started) * 1000),
         )
-    except (AppError, MemoGenerationFailed, ProviderError) as exc:
+    except (AppError, MemoGenerationFailed, ProviderError, IntegrationError) as exc:
         db.rollback()
-        code = getattr(exc, "code", "error")
+        code = exc.category.value if isinstance(exc, IntegrationError) else getattr(exc, "code", "error")
         job = db.get(Job, job.id) or job
         job_service.fail(db, job, str(code), getattr(exc, "message", str(exc)))
         _mark_live_failed(db, job)
@@ -214,7 +228,7 @@ def execute(db: Session, job: Job) -> None:
 
 
 def _mark_live_failed(db: Session, job: Job) -> None:
-    if job.kind == JobKind.replay and "live_session_id" in job.params:
+    if job.kind in (JobKind.replay, JobKind.realtime_ingest) and "live_session_id" in job.params:
         live = db.get(LiveSession, uuid.UUID(job.params["live_session_id"]))
         if live is not None and live.status == LiveSessionStatus.running:
             live.status = LiveSessionStatus.failed
@@ -239,6 +253,8 @@ def maintenance() -> None:
     with get_sessionmaker()() as db:
         purge_expired_sessions(db)
         enforce_retention(db)
+        purge_provider_events(db)
+        recover_interrupted(db)
         db.commit()
         job_service.requeue_stale(db, timedelta(minutes=10))
 

@@ -89,8 +89,8 @@ def meeting_jobs(meeting_id: uuid.UUID, auth: Auth, db: DB) -> list[Job]:
 
 
 @router.get("/connectors", response_model=list[ConnectorStatusOut], tags=["connectors"])
-def connectors(auth: Auth) -> list[Any]:
-    return list_connector_statuses()
+def connectors(auth: Auth, db: DB) -> list[Any]:
+    return list_connector_statuses(db, auth.user)
 
 
 health_router = APIRouter(tags=["health"])

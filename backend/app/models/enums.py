@@ -135,6 +135,8 @@ class JobKind(StrEnum):
     translation = "translate"
     generate_memo = "generate_memo"
     replay = "replay"
+    fetch_transcript = "fetch_transcript"  # WS2: post-meeting retrieval from a platform
+    realtime_ingest = "realtime_ingest"  # WS2: live stream (Zoom RTMS)
 
 
 class JobStatus(StrEnum):
@@ -156,3 +158,36 @@ class LiveSessionStatus(StrEnum):
     completed = "completed"
     failed = "failed"
     stopped = "stopped"
+    waiting = "waiting"  # WS2: armed, waiting for the provider to start the stream
+    interrupted = "interrupted"  # WS2: provider/connection dropped; may reconnect
+
+
+class PlatformProvider(StrEnum):
+    teams = "teams"
+    zoom = "zoom"
+    google_meet = "google_meet"
+
+
+class ConnectionState(StrEnum):
+    awaiting_authorization = "awaiting_authorization"
+    connected = "connected"
+    admin_approval_required = "admin_approval_required"
+    error = "error"
+    temporarily_disconnected = "temporarily_disconnected"
+
+
+class ExternalTranscriptStatus(StrEnum):
+    unknown = "unknown"
+    pending = "pending"  # meeting ended / still processing; retried with bounded backoff
+    available = "available"
+    imported = "imported"
+    not_available = "not_available"
+    permission_denied = "permission_denied"
+    failed = "failed"
+
+
+class ProviderEventStatus(StrEnum):
+    accepted = "accepted"
+    processed = "processed"
+    ignored = "ignored"
+    failed = "failed"

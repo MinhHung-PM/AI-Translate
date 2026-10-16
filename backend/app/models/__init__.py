@@ -1,6 +1,13 @@
 """Import all models so that metadata is complete for Alembic and tests."""
 
 from app.models.identity import Division, DivisionAssignment, OidcLoginState, User, UserSession
+from app.models.integration import (
+    ExternalMeetingReference,
+    PlatformConnection,
+    PlatformCredential,
+    PlatformOAuthState,
+    ProviderEvent,
+)
 from app.models.meeting import (
     LiveSession,
     Meeting,
@@ -14,6 +21,11 @@ from app.models.ops import AIProviderConfiguration, AuditEvent, Job, SessionSecr
 from app.models.project import GlossaryEntry, Project, ProjectMembership
 
 __all__ = [
+    "ExternalMeetingReference",
+    "PlatformConnection",
+    "PlatformCredential",
+    "PlatformOAuthState",
+    "ProviderEvent",
     "AIProviderConfiguration",
     "ActionItem",
     "AuditEvent",
