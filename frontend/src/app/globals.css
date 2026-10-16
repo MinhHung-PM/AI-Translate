@@ -12,7 +12,10 @@
   --color-line: #e5e7eb;
   --color-surface: #ffffff;
   --color-canvas: #f6f7f9;
-  --font-sans: "Inter", "Noto Sans JP", "Noto Sans", "Hiragino Sans", "Yu Gothic UI", "Segoe UI", system-ui, sans-serif;
+  /* Vietnamese-complete fonts first: Japanese UI fonts (Yu Gothic, Hiragino) lack precomposed Vietnamese
+     letters (ấ, ả, ố…), which Chromium then renders as a base letter + a detached accent. They stay as
+     per-glyph fallbacks for kanji and kana. */
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, "Noto Sans", "Helvetica Neue", Arial, "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
