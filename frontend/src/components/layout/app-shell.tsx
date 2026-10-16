@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { BarChart3, ClipboardList, FolderKanban, History, LayoutDashboard, LogOut, PlusCircle, Settings, Shield } from "lucide-react";
+import { BarChart3, ClipboardList, FolderKanban, History, LayoutDashboard, LogOut, PlusCircle,
+  Plug, Settings, Shield } from "lucide-react";
 import { Spinner, cn } from "@/components/ui";
 import { t } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
@@ -15,6 +16,7 @@ const NAV = [
   { href: "/actions", label: t.nav.actions, icon: ClipboardList },
   { href: "/projects", label: t.nav.projects, icon: FolderKanban },
   { href: "/usage", label: t.nav.usage, icon: BarChart3 },
+  { href: "/integrations", label: t.nav.integrations, icon: Plug },
   { href: "/settings", label: t.nav.settings, icon: Settings },
 ];
 

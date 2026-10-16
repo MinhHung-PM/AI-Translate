@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Alert, Button, Card, EmptyState, Input, Pagination, ProgressBar, Select, Spinner } from "@/components/ui";
+import { MeetingSourceSelector } from "@/components/integrations/MeetingSourceSelector";
 import { ImportPanel } from "@/components/meeting/import-panel";
 import { MeetingHeader } from "@/components/meeting/meeting-header";
 import { TranscriptTable } from "@/components/meeting/transcript-table";
@@ -89,6 +90,11 @@ export default function TranscriptWorkspacePage() {
 
       {canView && (
         <div className="space-y-4">
+          {(editable || meeting.platform !== "manual_import") && (
+            <Card title={t.source.title}>
+              <MeetingSourceSelector meetingId={id} editable={editable} platform={meeting.platform} onImported={refreshAll} />
+            </Card>
+          )}
           {(!hasTranscript || showImport) && editable && (
             <Card title={t.workspace.import}>
               <ImportPanel meetingId={id} hasTranscript={hasTranscript} onImported={refreshAll} />

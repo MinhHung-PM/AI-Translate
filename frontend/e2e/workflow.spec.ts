@@ -107,7 +107,7 @@ test("Create project → meeting → import → translate → memo → review �
 test("Replay demo is clearly labelled and streams translated entries", async ({ page }) => {
   await login(page, "pm@example.com");
   await createMeeting(page, /ALPHA/, `Replay demo ${Date.now()}`);
-  await page.getByRole("link", { name: "Phát lại (Demo)" }).click();
+  await page.getByRole("link", { name: "Trực tiếp / Phát lại" }).click();
   await expect(tid(page, "demo-banner")).toContainText("KHÔNG phải kết nối cuộc họp thực");
   await page.getByLabel("Khoảng cách giữa các đoạn (giây)").filter({ visible: true }).fill("0.3");
   await page.getByLabel("Hoặc dán văn bản").filter({ visible: true }).fill("田中: 本日の議題を確認します。\nNguyen: 仕様書を共有します。\n田中: 了解しました。");

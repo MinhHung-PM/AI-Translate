@@ -93,7 +93,7 @@ export interface Meeting {
   scheduled_at: string;
   timezone: string;
   platform: MeetingPlatform;
-  platform_status: "available" | "not_configured";
+  platform_status: "available" | "not_configured" | "not_linked";
   meeting_url: string | null;
   objective: string | null;
   custom_instructions: string | null;
@@ -148,7 +148,7 @@ export interface TranslationStats {
 
 export interface Job {
   id: string;
-  kind: "translate" | "generate_memo" | "replay";
+  kind: "translate" | "generate_memo" | "replay" | "fetch_transcript" | "realtime_ingest";
   status: JobStatus;
   meeting_id: string | null;
   progress_done: number;
@@ -167,7 +167,11 @@ export interface LiveSession {
   meeting_id: string;
   connector: string;
   is_demo: boolean;
-  status: "running" | "completed" | "failed" | "stopped";
+  status: "running" | "completed" | "failed" | "stopped" | "waiting" | "interrupted";
+  provider_session_id?: string | null;
+  reconnect_count?: number;
+  last_event_at?: string | null;
+  status_message?: string | null;
   entries_total: number;
   entries_emitted: number;
   started_at: string;
@@ -399,4 +403,105 @@ export interface AuditEvent {
   project_id: string | null;
   details: Record<string, unknown>;
   created_at: string;
+}
+
+// ---- Workstream 2: platform integrations (mirrors backend app/api/v1/integrations.py) ----
+
+export type PlatformProvider = "teams" | "zoom" | "google_meet";
+export type CapabilityName =
+  | "transcript_import"
+  | "list_meetings"
+  | "post_meeting_transcript"
+  | "live_transcript"
+  | "live_audio"
+  | "speaker_metadata"
+  | "meeting_event_notifications"
+  | "recovery_after_disconnect";
+export type CapabilityStatusName =
+  | "available"
+  | "requires_configuration"
+  | "requires_user_consent"
+  | "requires_admin_approval"
+  | "not_supported"
+  | "temporarily_unavailable";
+export type ConnectionDisplayStatus =
+  | "not_configured"
+  | "not_connected"
+  | "awaiting_authorization"
+  | "connected"
+  | "connected_post_meeting_only"
+  | "admin_approval_required"
+  | "temporarily_disconnected"
+  | "error";
+
+export interface CapabilityState {
+  capability: CapabilityName;
+  status: CapabilityStatusName;
+  message: string;
+  remediation: string | null;
+  verified_live: boolean;
+}
+
+export interface ConnectionView {
+  provider: PlatformProvider;
+  display_name: string;
+  configured: boolean;
+  configuration_problems: string[];
+  sandbox: boolean;
+  status: ConnectionDisplayStatus;
+  account: string | null;
+  granted_scopes: string[];
+  requested_scopes: string[];
+  capabilities: CapabilityState[];
+  last_attempt_at: string | null;
+  last_success_at: string | null;
+  last_event_at: string | null;
+  last_error_category: string | null;
+  last_error_message: string | null;
+  reconnect_count: number;
+  redirect_uri: string | null;
+}
+
+export interface AvailableMeeting {
+  provider_meeting_id: string;
+  title: string;
+  start: string | null;
+  end: string | null;
+  join_url: string | null;
+  has_transcript: boolean | null;
+}
+
+export type ExternalTranscriptStatus = "unknown" | "pending" | "available" | "imported" | "not_available" | "permission_denied" | "failed";
+
+export interface ExternalSource {
+  id: string;
+  meeting_id: string;
+  provider: PlatformProvider;
+  provider_meeting_id: string;
+  join_url: string | null;
+  transcript_status: ExternalTranscriptStatus;
+  status_message: string | null;
+  fetch_attempts: number;
+  last_checked_at: string | null;
+  next_check_at: string | null;
+  live_requested: boolean;
+  sandbox: boolean;
+  capabilities: CapabilityState[];
+  connection_status: ConnectionDisplayStatus;
+  live_session: LiveSession | null;
+}
+
+export interface ProviderEventRow {
+  provider: string;
+  event_type: string;
+  status: string;
+  detail: string | null;
+  meeting_id: string | null;
+  received_at: string;
+}
+
+export interface IntegrationDiagnostics {
+  connection: ConnectionView;
+  recent_events: ProviderEventRow[];
+  recent_jobs: Job[];
 }

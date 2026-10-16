@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     ActionItem,
     Decision,
+    ExternalMeetingReference,
     Issue,
     Meeting,
     Memo,
@@ -34,12 +35,18 @@ from app.schemas.api import (
 )
 from app.services.authz import AccessLevel, ProjectAccess, can_edit_meeting_content
 
-PLATFORM_STATUS = {
-    MeetingPlatform.manual_import: "available",
-    MeetingPlatform.teams: "not_configured",
-    MeetingPlatform.zoom: "not_configured",
-    MeetingPlatform.google_meet: "not_configured",
-}
+
+def platform_status(meeting: Meeting, linked: bool) -> str:
+    """Truthful platform status: a platform meeting is only "available" when it is
+    linked to an authorized provider meeting (Workstream 2)."""
+    if meeting.platform == MeetingPlatform.manual_import:
+        return "available"
+    if linked:
+        return "available"
+    from app.integrations.registry import get_connector
+
+    connector = get_connector(meeting.platform.value)
+    return "not_configured" if connector.configuration_problems() else "not_linked"
 
 
 def meeting_out(
@@ -52,10 +59,16 @@ def meeting_out(
     memo_status: MemoStatus | None = None,
     entry_count: int | None = None,
     with_counts: bool = True,
+    linked: bool | None = None,
 ) -> MeetingOut:
     out = MeetingOut.model_validate(meeting)
     out.participants = [ParticipantOut.model_validate(p) for p in meeting.participants]
-    out.platform_status = PLATFORM_STATUS[meeting.platform]
+    if linked is None and meeting.platform != MeetingPlatform.manual_import:
+        linked = (
+            db.scalar(select(ExternalMeetingReference.id).where(ExternalMeetingReference.meeting_id == meeting.id))
+            is not None
+        )
+    out.platform_status = platform_status(meeting, bool(linked))
     out.project_name = project_name or (meeting.project.name if meeting.project else None)
     if with_counts:
         if memo_status is None:

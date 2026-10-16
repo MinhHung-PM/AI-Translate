@@ -277,3 +277,12 @@ def test_registry():
 
     with pytest.raises(NotFound):
         get_connector("skype")
+
+
+def test_malformed_endpoint_overrides_fail_fast():
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    with pytest.raises(ValidationError, match="INTEGRATION_ENDPOINT_OVERRIDES"):
+        Settings(integration_endpoint_overrides="{teams:http://fake}")

@@ -6,6 +6,7 @@ values are missing (see ``Settings.validate_for_environment``).
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -118,6 +119,19 @@ class Settings(BaseSettings):
     # Development/test only: point connectors at a fake provider server. Any
     # override marks every connection as SANDBOX and is refused in production.
     integration_endpoint_overrides: str = ""  # JSON object, e.g. {"google_meet": "http://localhost:9100/google"}
+
+    @field_validator("integration_endpoint_overrides")
+    @classmethod
+    def _valid_overrides(cls, value: str) -> str:
+        # Fail fast: a malformed value must never silently fall back to real endpoints.
+        if value.strip():
+            try:
+                mapping = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError("INTEGRATION_ENDPOINT_OVERRIDES must be a JSON object") from exc
+            if not isinstance(mapping, dict) or not all(isinstance(v, str) for v in mapping.values()):
+                raise ValueError("INTEGRATION_ENDPOINT_OVERRIDES must map provider names to base URLs")
+        return value
 
     @field_validator("cors_allowed_origins", "trusted_hosts", "provider_base_url_allowlist", mode="before")
     @classmethod

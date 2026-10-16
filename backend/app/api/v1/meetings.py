@@ -12,7 +12,7 @@ from app.api.deps import DB, Auth
 from app.api.v1.serializers import meeting_out
 from app.core.errors import Forbidden
 from app.db.base import utcnow
-from app.models import Meeting, MeetingParticipant, Memo, Project, TranscriptEntry
+from app.models import ExternalMeetingReference, Meeting, MeetingParticipant, Memo, Project, TranscriptEntry
 from app.models.enums import MeetingPlatform, MeetingStatus, MemoStatus
 from app.schemas.api import MeetingIn, MeetingOut, MeetingUpdate
 from app.schemas.common import Page, PageParams
@@ -89,6 +89,15 @@ def list_meetings(
         if ids
         else {}
     )
+    linked_ids = (
+        set(
+            db.scalars(
+                select(ExternalMeetingReference.meeting_id).where(ExternalMeetingReference.meeting_id.in_(ids))
+            ).all()
+        )
+        if ids
+        else set()
+    )
     access_cache: dict[uuid.UUID, ProjectAccess] = {}
     items = []
     for meeting, project_name, m_status in rows:
@@ -103,6 +112,7 @@ def list_meetings(
                 project_name=project_name,
                 memo_status=m_status,
                 entry_count=counts.get(meeting.id, 0),
+                linked=meeting.id in linked_ids,
             )
         )
     return Page(items=items, total=total, page=pg.page, page_size=pg.page_size)

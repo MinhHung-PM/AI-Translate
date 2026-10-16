@@ -352,3 +352,13 @@ def test_authorization_url_parameters_per_provider(pm, fake):
         for k, v in expect.items():
             assert q[k] == v
         assert q["state"] and q["code_challenge_method"] == "S256"
+
+
+def test_platform_status_is_truthful(pm, fake):
+    connect_platform(pm, fake, "zoom")
+    meeting = create_meeting(pm, platform="zoom")
+    assert meeting["platform_status"] == "not_linked"  # configured, but no provider meeting linked
+    pm.post(f"/meetings/{meeting['id']}/external-source", json={"provider": "zoom", "reference": ZOOM_MEETING_ID})
+    assert pm.get(f"/meetings/{meeting['id']}").json()["platform_status"] == "available"
+    listed = pm.get("/meetings", params={"platform": "zoom"}).json()["items"]
+    assert any(m["id"] == meeting["id"] and m["platform_status"] == "available" for m in listed)

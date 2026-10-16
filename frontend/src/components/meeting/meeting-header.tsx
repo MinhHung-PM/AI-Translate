@@ -43,9 +43,9 @@ export function MeetingHeader({ meeting }: { meeting: Meeting }) {
             </span>
             <MeetingStatusBadge status={meeting.status} />
             <MemoStatusBadge status={meeting.memo_status} />
-            <Badge tone={meeting.platform_status === "available" ? "neutral" : "warning"} title={meeting.platform_status === "available" ? undefined : t.platform.notConfiguredHint}>
+            <Badge tone={meeting.platform_status === "available" ? "neutral" : "warning"} title={meeting.platform_status === "available" ? undefined : meeting.platform_status === "not_linked" ? t.platform.notLinkedHint : t.platform.notConfiguredHint}>
               {t.platform[meeting.platform]}
-              {meeting.platform_status !== "available" && ` · ${t.platform.not_configured}`}
+              {meeting.platform_status !== "available" && ` · ${meeting.platform_status === "not_linked" ? t.platform.not_linked : t.platform.not_configured}`}
             </Badge>
           </div>
         </div>
