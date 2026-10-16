@@ -1,5 +1,5 @@
 {
-  "_comment": "Provider catalog. Prices are configuration used only to compute 'Estimated Cost' (USD per 1M tokens). Verify against the provider's current price list before relying on them.",
+  "_comment": "Provider catalog. Prices are configuration used only to compute 'Estimated Cost' (USD per 1M tokens). Verify against the provider's current price list before relying on them. STT prices are USD per audio minute.",
   "providers": [
     {
       "key": "mock",
@@ -9,9 +9,18 @@
       "allow_custom_base_url": false,
       "allow_custom_model": false,
       "dev_only": true,
-      "capabilities": ["translation", "memo_generation", "structured_output"],
+      "capabilities": [
+        "translation",
+        "memo_generation",
+        "structured_output"
+      ],
       "models": [
-        { "id": "mock-deterministic", "label": "Deterministic mock", "input_per_1m": 0, "output_per_1m": 0 }
+        {
+          "id": "mock-deterministic",
+          "label": "Deterministic mock",
+          "input_per_1m": 0,
+          "output_per_1m": 0
+        }
       ]
     },
     {
@@ -23,11 +32,39 @@
       "allow_custom_base_url": false,
       "allow_custom_model": true,
       "dev_only": false,
-      "capabilities": ["translation", "memo_generation", "structured_output", "model_discovery"],
+      "capabilities": [
+        "translation",
+        "memo_generation",
+        "structured_output",
+        "model_discovery",
+        "speech_to_text"
+      ],
       "models": [
-        { "id": "gpt-4.1-mini", "label": "GPT-4.1 mini", "input_per_1m": 0.4, "output_per_1m": 1.6 },
-        { "id": "gpt-4.1", "label": "GPT-4.1", "input_per_1m": 2.0, "output_per_1m": 8.0 },
-        { "id": "gpt-4o-mini", "label": "GPT-4o mini", "input_per_1m": 0.15, "output_per_1m": 0.6 }
+        {
+          "id": "gpt-4.1-mini",
+          "label": "GPT-4.1 mini",
+          "input_per_1m": 0.4,
+          "output_per_1m": 1.6
+        },
+        {
+          "id": "gpt-4.1",
+          "label": "GPT-4.1",
+          "input_per_1m": 2.0,
+          "output_per_1m": 8.0
+        },
+        {
+          "id": "gpt-4o-mini",
+          "label": "GPT-4o mini",
+          "input_per_1m": 0.15,
+          "output_per_1m": 0.6
+        }
+      ],
+      "stt_models": [
+        {
+          "id": "gpt-4o-transcribe-diarize",
+          "label": "GPT-4o Transcribe Diarize",
+          "audio_per_minute": 0.006
+        }
       ]
     },
     {
@@ -38,7 +75,10 @@
       "allow_custom_base_url": true,
       "allow_custom_model": true,
       "dev_only": false,
-      "capabilities": ["translation", "memo_generation"],
+      "capabilities": [
+        "translation",
+        "memo_generation"
+      ],
       "models": []
     }
   ]

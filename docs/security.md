@@ -123,6 +123,15 @@ retention is governed by the user's provider account terms. The mock provider se
 Only the OAuth requests, the meeting reference the user entered (to resolve it), and authenticated read
 requests for the meeting's metadata and transcript. No AI output, other meetings or user data is sent.
 
+## Live audio capture
+
+See [`audio-capture.md`](audio-capture.md). Participant notice must be confirmed before capture (audited).
+Audio is processed in memory and never stored; only short per-speaker voice references are kept, encrypted
+(AAD `audio-speaker-ref:{session}:{speaker}`), and deleted when the session stops or goes idle. Only the
+user who started a capture can post audio to it. Chunks are size/duration/format-validated and
+rate-limited. Audio and voice references are sent to OpenAI with the user's own key; nothing else. The web
+`Permissions-Policy` allows `microphone` and `display-capture` for the app's own origin only.
+
 ## Logging
 
 Structured JSON logs contain IDs, counts, durations, provider/model names and error codes. Transcript

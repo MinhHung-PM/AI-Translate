@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Alert, Badge, Button, Card, Checkbox, EmptyState, Field, Input, ProgressBar, Spinner, Textarea } from "@/components/ui";
+import { AudioCapturePanel } from "@/components/audio/AudioCapturePanel";
+import { Alert, Badge, Button, Card, Checkbox, EmptyState, Field, Input, ProgressBar, Spinner, Tabs, Textarea } from "@/components/ui";
 import { MeetingHeader } from "@/components/meeting/meeting-header";
 import { TranscriptTable } from "@/components/meeting/transcript-table";
 import { useMeeting } from "@/components/meeting/use-meeting";
@@ -25,9 +26,9 @@ function elapsed(session: LiveSession, now: number | undefined): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** Live view. Demo/replay sessions are labelled DEMO; sessions fed by a real
- * platform connector (Zoom RTMS) are labelled as provider data, with their
- * connection state. Both use the same polling endpoint. */
+/** Live view. Sources: live audio capture from this computer (speech-to-text
+ * with speaker separation), a real platform connector (Zoom RTMS), or the
+ * replay demo (labelled DEMO). All feed the same polling endpoint. */
 export default function LivePage() {
   const { id, data: meeting, reload: reloadMeeting } = useMeeting();
   const [feed, setFeed] = useState<Feed | null>(null);
@@ -36,10 +37,13 @@ export default function LivePage() {
   const [translate, setTranslate] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"audio" | "replay">("audio");
+  const [refresh, setRefresh] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const running = feed?.session?.status === "running";
   const active = ACTIVE.includes(feed?.session?.status ?? "");
+  const isAudio = feed?.session?.connector === "audio_capture";
   const isDemo = !feed?.session || feed.session.is_demo;
 
   useEffect(() => {
@@ -61,7 +65,7 @@ export default function LivePage() {
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, feed?.session?.id, active]);
+  }, [id, feed?.session?.id, active, refresh]);
 
   useEffect(() => {
     if (running) bottomRef.current?.scrollIntoView({ block: "end" });
@@ -103,11 +107,22 @@ export default function LivePage() {
 
   if (!meeting) return <Spinner label={t.common.loading} />;
   const canStart = meeting.permissions.edit && meeting.entry_count === 0 && (!feed?.session || (feed.session.is_demo && !active));
+  const audioMode = meeting.permissions.edit && (mode === "audio" || (isAudio && active));
+  const showTabs = meeting.permissions.edit && !active;
 
   return (
     <>
       <MeetingHeader meeting={meeting} />
-      {isDemo ? (
+      {(isAudio || (audioMode && !feed?.session)) ? (
+        <div
+          className={`mb-4 rounded-md border-2 px-4 py-3 text-sm font-semibold ${isAudio && isDemo ? "border-dashed border-amber-400 bg-amber-50 text-amber-900" : "border-sky-500 bg-sky-50 text-sky-900"}`}
+          role="status"
+          data-testid="audio-banner"
+        >
+          {isAudio && isDemo ? t.audio.mockBanner : t.audio.banner}
+          {isAudio && isDemo && <p className="mt-1 text-xs font-normal">{t.audio.mockHint}</p>}
+        </div>
+      ) : isDemo ? (
         <div className="mb-4 rounded-md border-2 border-dashed border-amber-400 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900" role="status" data-testid="demo-banner">
           {t.live.banner}
         </div>
@@ -118,7 +133,21 @@ export default function LivePage() {
       )}
       {error && <Alert tone="danger" className="mb-3">{error}</Alert>}
 
-      {canStart && (
+      {showTabs && (
+        <div className="mb-3">
+          <Tabs
+            value={mode}
+            onChange={setMode}
+            items={[
+              { value: "audio", label: t.audio.tab },
+              { value: "replay", label: t.audio.replayTab },
+            ]}
+          />
+        </div>
+      )}
+      {audioMode && <AudioCapturePanel meetingId={id} session={feed?.session ?? null} onChanged={() => setRefresh((n) => n + 1)} />}
+
+      {canStart && !audioMode && (
         <Card title={t.live.start} className="mb-4">
           <div className="grid gap-3 md:grid-cols-3">
             <Field label={t.workspace.chooseFile}>
@@ -139,7 +168,7 @@ export default function LivePage() {
           </Button>
         </Card>
       )}
-      {!canStart && !feed?.session && meeting.entry_count > 0 && <Alert tone="info">{t.live.requiresEmpty}</Alert>}
+      {!canStart && !audioMode && !feed?.session && meeting.entry_count > 0 && <Alert tone="info">{t.live.requiresEmpty}</Alert>}
 
       {feed?.session && (
         <div className="space-y-3">
@@ -148,7 +177,7 @@ export default function LivePage() {
             <span className="text-sm">
               {t.live.status}: <b data-testid="replay-status">{feed.session.status}</b>
             </span>
-            {feed.session.is_demo ? (
+            {feed.session.is_demo && !isAudio ? (
               <div className="min-w-48 flex-1">
                 <ProgressBar value={feed.session.entries_emitted} max={feed.session.entries_total} label={t.live.emitted} />
               </div>
@@ -160,23 +189,29 @@ export default function LivePage() {
                 <span>
                   {t.live.emitted}: {feed.session.entries_emitted}
                 </span>
-                <span>
-                  {t.liveProvider.reconnects}: {feed.session.reconnect_count ?? 0}
-                </span>
+                {!isAudio && (
+                  <span>
+                    {t.liveProvider.reconnects}: {feed.session.reconnect_count ?? 0}
+                  </span>
+                )}
                 <span>
                   {t.liveProvider.lastEvent}: {formatDateTime(feed.session.last_event_at)}
                 </span>
               </span>
             )}
-            {(feed.session.is_demo ? running : active) && meeting.permissions.edit && (
+            {!isAudio && (feed.session.is_demo ? running : active) && meeting.permissions.edit && (
               <Button variant="danger" onClick={() => void stop()}>
                 {t.live.stop}
               </Button>
             )}
           </div>
           {feed.session.status === "waiting" && <Alert tone="info">{t.liveProvider.waiting}</Alert>}
-          {feed.session.status === "interrupted" && <Alert tone="warning">{t.liveProvider.interrupted}</Alert>}
-          {feed.session.status_message && !feed.session.is_demo && <p className="text-xs text-muted">{feed.session.status_message}</p>}
+          {feed.session.status === "interrupted" && !isAudio && <Alert tone="warning">{t.liveProvider.interrupted}</Alert>}
+          {feed.session.status_message && (!feed.session.is_demo || (isAudio && feed.session.status === "interrupted")) && (
+            <p className="text-xs text-muted" data-testid="live-status-message">
+              {feed.session.status_message}
+            </p>
+          )}
           {feed.entries.length === 0 ? (
             <EmptyState title={t.live.waiting} />
           ) : (

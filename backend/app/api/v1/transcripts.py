@@ -406,7 +406,11 @@ def stop_replay(session_id: uuid.UUID, auth: Auth, db: DB) -> LiveSession:
         raise NotFound("Live session not found")
     meeting, access = load_meeting(db, auth.user, live.meeting_id, AccessLevel.contribute)
     require_edit_meeting(access, meeting, auth.user)
-    if live.status == LiveSessionStatus.running:
+    if live.connector == "audio_capture":
+        from app.services.audio_capture import stop_session
+
+        stop_session(db, live)  # also deletes voice references
+    elif live.status == LiveSessionStatus.running:
         live.status = LiveSessionStatus.stopped
     db.commit()
     return live

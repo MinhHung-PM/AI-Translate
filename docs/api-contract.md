@@ -65,6 +65,9 @@ Base path `/api/v1`. Machine-readable spec: [`docs/openapi.json`](openapi.json) 
 | | `POST /meetings/{id}/external-source/fetch` → 202 Job | `fetch_transcript` job with bounded backoff; 409 when the capability is not available |
 | | `POST /meetings/{id}/external-source/live/start\|stop` | arms/stops provider live ingestion (Zoom RTMS only, when configured) |
 | | `POST /jobs/{id}/retry` | retry a failed retrieval job |
+| Live audio | `POST /meetings/{id}/audio-sessions` | `{sources[{id,kind,label,single_speaker}], translate, consent_confirmed}`; one active live session per meeting |
+| | `POST /audio-sessions/{id}/chunks` | multipart `source_id, chunk_seq, offset_ms, file` (16-bit mono WAV ≤ 30 s); synchronous → recognised entries; idempotent per `(source_id, chunk_seq)`; creator only; rate-limited |
+| | `GET /audio-sessions/{id}`, `POST /audio-sessions/{id}/stop`, `PATCH /audio-sessions/{id}/speakers/{key}` | speakers (no audio returned); stop deletes voice references; rename relabels existing entries |
 | Webhooks (WS2) | `POST /integrations/zoom/webhook` | unauthenticated; HMAC signature + timestamp tolerance, size limit, IP rate limit, replay dedup, URL validation |
 
 Integration errors use code `integration_{category}` (e.g. `integration_admin_approval_required`,

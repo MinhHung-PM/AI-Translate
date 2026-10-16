@@ -18,6 +18,12 @@ class ModelInfo(BaseModel):
     output_per_1m: Decimal | None = None
 
 
+class SttModelInfo(BaseModel):
+    id: str
+    label: str | None = None
+    audio_per_minute: Decimal | None = None
+
+
 class ProviderInfo(BaseModel):
     key: str
     display_name: str
@@ -29,6 +35,7 @@ class ProviderInfo(BaseModel):
     dev_only: bool = False
     capabilities: list[Capability] = Field(default_factory=list)
     models: list[ModelInfo] = Field(default_factory=list)
+    stt_models: list[SttModelInfo] = Field(default_factory=list)
 
     def model_info(self, model_id: str) -> ModelInfo | None:
         return next((m for m in self.models if m.id == model_id), None)

@@ -408,6 +408,11 @@ class LiveSessionOut(ApiModel):
     started_at: datetime
     ended_at: datetime | None
     job_id: uuid.UUID | None
+    provider_session_id: str | None = None
+    reconnect_count: int = 0
+    last_event_at: datetime | None = None
+    status_message: str | None = None
+    capture_config: dict[str, Any] | None = None
 
 
 class LiveFeedOut(ApiModel):

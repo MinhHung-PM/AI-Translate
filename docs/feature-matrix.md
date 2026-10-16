@@ -47,6 +47,8 @@ endpoint) · **Admin approval** = works only after tenant/admin approval · **No
 | Google Meet | OAuth, conference records, post-meeting transcript entries + participants | **Mocked** | `test_google_meet_*` |
 | Google Meet | Live transcript / live audio | **Not supported** (Media API preview, no transcripts) | `test_live_never_available_for_teams_and_meet_even_with_all_scopes` |
 | WS2 | Real-provider verification (any platform) | **Blocked** — no tenant/account credentials | [`integrations/`](integrations/) |
+| Live audio | Capture from this computer (microphones, system/tab audio) → VAD → speech-to-text with speaker separation → live translation | **Tested** with MOCK STT + mocked OpenAI HTTP; browser E2E with fake microphone · **not verified against real OpenAI** | `test_audio_capture.py`, `audio.test.ts`, `e2e/audio-capture.spec.ts`, [audio-capture.md](audio-capture.md) |
+| Live audio | System audio via screen share on a real Windows machine | Implemented · **not automated** (browser picker) | manual |
 | Later | Auto-join bots, outbound voice, Jira/ADO/SharePoint | **Deferred** | backlog |
 
 ## Verification run (this delivery)
@@ -106,6 +108,8 @@ A normal `docker compose up --build` on a developer machine needs no such change
     team wanting the same transcript must import the file.
 18. **Live updates are polled** (1 s); the realtime ingestion thread runs in the worker process — run a
     single worker for RTMS sessions or pin them (multi-worker coordination is backlog).
+19. **Live audio diarization** depends on OpenAI `gpt-4o-transcribe-diarize` (≤ 4 known speakers per
+    request; utterances < 2 s from new speakers stay unattributed). Quality for ja/vi not yet measured.
 
 ## Prioritized backlog (after Workstream 2)
 

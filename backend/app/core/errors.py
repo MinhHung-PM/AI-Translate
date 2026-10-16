@@ -68,6 +68,11 @@ class RateLimited(AppError):
     code = "rate_limited"
 
 
+class SpeechToTextFailed(AppError):
+    status_code = 502
+    code = "speech_to_text_failed"
+
+
 class ProviderNotConfigured(AppError):
     status_code = 409
     code = "provider_not_configured"

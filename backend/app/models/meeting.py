@@ -192,6 +192,8 @@ class LiveSession(UUIDPk, Base):
     )
     entries_total: Mapped[int] = mapped_column(Integer, default=0)
     entries_emitted: Mapped[int] = mapped_column(Integer, default=0)
+    # Audio capture only: selected sources, language hint, translate flag (no audio data).
+    capture_config: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(

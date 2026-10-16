@@ -82,6 +82,15 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # --- Live audio capture (speech-to-text + speaker diarization) ---------
+    stt_model: str = "gpt-4o-transcribe-diarize"
+    stt_timeout_seconds: float = 60.0
+    audio_chunk_max_seconds: float = 30.0
+    audio_chunk_max_bytes: int = 2_000_000
+    audio_max_sources: int = 4
+    audio_rate_limit_per_minute: int = 120
+    audio_session_idle_minutes: int = 30
+
     # --- Workstream 2: meeting-platform integrations ----------------------
     # Platform app credentials are operator-level settings (an app registered
     # by IT in Entra ID / Zoom Marketplace / Google Cloud). They are NOT user

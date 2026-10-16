@@ -108,6 +108,7 @@ test("Replay demo is clearly labelled and streams translated entries", async ({ 
   await login(page, "pm@example.com");
   await createMeeting(page, /ALPHA/, `Replay demo ${Date.now()}`);
   await page.getByRole("link", { name: "Trực tiếp / Phát lại" }).click();
+  await page.getByRole("tab", { name: "Phát lại (Demo)" }).filter({ visible: true }).click();
   await expect(tid(page, "demo-banner")).toContainText("KHÔNG phải kết nối cuộc họp thực");
   await page.getByLabel("Khoảng cách giữa các đoạn (giây)").filter({ visible: true }).fill("0.3");
   await page.getByLabel("Hoặc dán văn bản").filter({ visible: true }).fill("田中: 本日の議題を確認します。\nNguyen: 仕様書を共有します。\n田中: 了解しました。");

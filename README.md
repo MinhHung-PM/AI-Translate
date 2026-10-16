@@ -35,6 +35,11 @@ Cần cài và mở **Docker Desktop**, sau đó trong thư mục dự án:
 
 Script tự tạo `.env` kèm khóa mã hóa, build, khởi động và mở <http://localhost:3000>.
 
+**Thu âm & dịch trực tiếp:** mở một cuộc họp → *Trực tiếp / Phát lại* → *Thu âm trực tiếp*, chọn micro và/hoặc
+âm thanh cuộc họp (chia sẻ màn hình/tab kèm âm thanh) → hệ thống nhận dạng, tách người nói và dịch từng câu.
+Cần thêm OpenAI (kèm API key) trong *Cài đặt AI*; nếu chưa có sẽ chạy MOCK. Chi tiết:
+[`docs/audio-capture.md`](docs/audio-capture.md).
+
 **Thử tích hợp Teams / Zoom / Google Meet mà không cần tài khoản thật:** `./start.sh sandbox`
 (Windows: `.\start.ps1 sandbox`). Lệnh này chạy thêm máy chủ giả lập, gắn nhãn SANDBOX và chỉ dùng để
 thử nghiệm. Hướng dẫn từng bước: [`docs/integrations/sandbox-vi.md`](docs/integrations/sandbox-vi.md).

@@ -34,6 +34,7 @@ from app.integrations.orchestration.external_source_service import run_fetch
 from app.models import Job, LiveSession, Meeting, Memo, Project, TranscriptEntry
 from app.models.enums import JobKind, JobStatus, Language, LiveSessionStatus, MemoStatus, TranslationStatus
 from app.services import jobs as job_service
+from app.services.audio_capture import purge_idle_sessions as purge_idle_audio_sessions
 from app.services.ingestion import ingest_event
 from app.services.memo_generation import MemoGenerationFailed, run_memo_generation
 from app.services.provider_config import resolve_provider
@@ -255,6 +256,7 @@ def maintenance() -> None:
         enforce_retention(db)
         purge_provider_events(db)
         recover_interrupted(db)
+        purge_idle_audio_sessions(db)
         db.commit()
         job_service.requeue_stale(db, timedelta(minutes=10))
 

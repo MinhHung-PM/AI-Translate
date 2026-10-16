@@ -4930,6 +4930,262 @@
     }
    }
   },
+  "/api/v1/meetings/{meeting_id}/audio-sessions": {
+   "post": {
+    "tags": [
+     "audio"
+    ],
+    "summary": "Start Audio Session",
+    "description": "Start live capture. The browser then posts audio chunks per source.",
+    "operationId": "start_audio_session_api_v1_meetings__meeting_id__audio_sessions_post",
+    "parameters": [
+     {
+      "name": "meeting_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Meeting Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AudioSessionIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AudioSessionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/audio-sessions/{session_id}": {
+   "get": {
+    "tags": [
+     "audio"
+    ],
+    "summary": "Get Audio Session",
+    "operationId": "get_audio_session_api_v1_audio_sessions__session_id__get",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Session Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AudioSessionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/audio-sessions/{session_id}/chunks": {
+   "post": {
+    "tags": [
+     "audio"
+    ],
+    "summary": "Post Audio Chunk",
+    "description": "One utterance (≤ 30 s, 16-bit mono WAV) from one source. Synchronous:\nreturns the recognised, speaker-labelled entries (translation included).",
+    "operationId": "post_audio_chunk_api_v1_audio_sessions__session_id__chunks_post",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Session Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_post_audio_chunk_api_v1_audio_sessions__session_id__chunks_post"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChunkOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/audio-sessions/{session_id}/stop": {
+   "post": {
+    "tags": [
+     "audio"
+    ],
+    "summary": "Stop Audio Session",
+    "operationId": "stop_audio_session_api_v1_audio_sessions__session_id__stop_post",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Session Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AudioSessionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/audio-sessions/{session_id}/speakers/{speaker_key}": {
+   "patch": {
+    "tags": [
+     "audio"
+    ],
+    "summary": "Rename Audio Speaker",
+    "operationId": "rename_audio_speaker_api_v1_audio_sessions__session_id__speakers__speaker_key__patch",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Session Id"
+      }
+     },
+     {
+      "name": "speaker_key",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Speaker Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SpeakerRename"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SpeakerOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/v1/health/live": {
    "get": {
     "tags": [
@@ -5526,6 +5782,90 @@
     "type": "object",
     "title": "AdminUserUpdate"
    },
+   "AudioSessionIn": {
+    "properties": {
+     "sources": {
+      "items": {
+       "$ref": "#/components/schemas/AudioSourceIn"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Sources"
+     },
+     "translate": {
+      "type": "boolean",
+      "title": "Translate",
+      "default": true
+     },
+     "consent_confirmed": {
+      "type": "boolean",
+      "title": "Consent Confirmed"
+     }
+    },
+    "type": "object",
+    "required": [
+     "sources",
+     "consent_confirmed"
+    ],
+    "title": "AudioSessionIn"
+   },
+   "AudioSessionOut": {
+    "properties": {
+     "session": {
+      "$ref": "#/components/schemas/LiveSessionOut"
+     },
+     "speakers": {
+      "items": {
+       "$ref": "#/components/schemas/SpeakerOut"
+      },
+      "type": "array",
+      "title": "Speakers"
+     }
+    },
+    "type": "object",
+    "required": [
+     "session",
+     "speakers"
+    ],
+    "title": "AudioSessionOut"
+   },
+   "AudioSourceIn": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$",
+      "title": "Id"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "microphone",
+       "system",
+       "tab",
+       "device"
+      ],
+      "title": "Kind"
+     },
+     "label": {
+      "type": "string",
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Label"
+     },
+     "single_speaker": {
+      "type": "boolean",
+      "title": "Single Speaker",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "kind",
+     "label"
+    ],
+    "title": "AudioSourceIn"
+   },
    "AuditEventOut": {
     "properties": {
      "id": {
@@ -5668,6 +6008,40 @@
     ],
     "title": "AvailableMeetingOut"
    },
+   "Body_post_audio_chunk_api_v1_audio_sessions__session_id__chunks_post": {
+    "properties": {
+     "source_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$",
+      "title": "Source Id"
+     },
+     "chunk_seq": {
+      "type": "integer",
+      "maximum": 10000000.0,
+      "minimum": 0.0,
+      "title": "Chunk Seq"
+     },
+     "offset_ms": {
+      "type": "integer",
+      "maximum": 86400000.0,
+      "minimum": 0.0,
+      "title": "Offset Ms"
+     },
+     "file": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream",
+      "title": "File"
+     }
+    },
+    "type": "object",
+    "required": [
+     "source_id",
+     "chunk_seq",
+     "offset_ms",
+     "file"
+    ],
+    "title": "Body_post_audio_chunk_api_v1_audio_sessions__session_id__chunks_post"
+   },
    "Body_start_replay_api_v1_meetings__meeting_id__replay_post": {
     "properties": {
      "file": {
@@ -5786,6 +6160,39 @@
      "temporarily_unavailable"
     ],
     "title": "CapabilityStatus"
+   },
+   "ChunkOut": {
+    "properties": {
+     "entries": {
+      "items": {
+       "$ref": "#/components/schemas/EntryOut"
+      },
+      "type": "array",
+      "title": "Entries"
+     },
+     "duplicate": {
+      "type": "boolean",
+      "title": "Duplicate"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "entries",
+     "duplicate",
+     "note"
+    ],
+    "title": "ChunkOut"
    },
    "Confidence": {
     "type": "string",
@@ -7667,6 +8074,57 @@
        }
       ],
       "title": "Job Id"
+     },
+     "provider_session_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provider Session Id"
+     },
+     "reconnect_count": {
+      "type": "integer",
+      "title": "Reconnect Count",
+      "default": 0
+     },
+     "last_event_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Event At"
+     },
+     "status_message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status Message"
+     },
+     "capture_config": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Capture Config"
      }
     },
     "type": "object",
@@ -10269,6 +10727,54 @@
      "excerpt"
     ],
     "title": "SourceRefOut"
+   },
+   "SpeakerOut": {
+    "properties": {
+     "speaker_key": {
+      "type": "string",
+      "title": "Speaker Key"
+     },
+     "source_id": {
+      "type": "string",
+      "title": "Source Id"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "segments": {
+      "type": "integer",
+      "title": "Segments"
+     },
+     "has_voice_reference": {
+      "type": "boolean",
+      "title": "Has Voice Reference"
+     }
+    },
+    "type": "object",
+    "required": [
+     "speaker_key",
+     "source_id",
+     "display_name",
+     "segments",
+     "has_voice_reference"
+    ],
+    "title": "SpeakerOut"
+   },
+   "SpeakerRename": {
+    "properties": {
+     "display_name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Display Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "display_name"
+    ],
+    "title": "SpeakerRename"
    },
    "TestOut": {
     "properties": {

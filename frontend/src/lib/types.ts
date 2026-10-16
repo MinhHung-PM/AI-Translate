@@ -172,6 +172,7 @@ export interface LiveSession {
   reconnect_count?: number;
   last_event_at?: string | null;
   status_message?: string | null;
+  capture_config?: { sources: AudioSourceConfig[]; translate: boolean; stt_model: string } | null;
   entries_total: number;
   entries_emitted: number;
   started_at: string;
@@ -504,4 +505,31 @@ export interface IntegrationDiagnostics {
   connection: ConnectionView;
   recent_events: ProviderEventRow[];
   recent_jobs: Job[];
+}
+
+// ---- Live audio capture (mirrors backend app/api/v1/audio.py) ----
+export interface AudioSourceConfig {
+  id: string;
+  kind: "microphone" | "system" | "tab" | "device";
+  label: string;
+  single_speaker: boolean;
+}
+
+export interface AudioSpeaker {
+  speaker_key: string;
+  source_id: string;
+  display_name: string;
+  segments: number;
+  has_voice_reference: boolean;
+}
+
+export interface AudioSession {
+  session: LiveSession;
+  speakers: AudioSpeaker[];
+}
+
+export interface AudioChunkResult {
+  entries: TranscriptEntry[];
+  duplicate: boolean;
+  note: string | null;
 }
