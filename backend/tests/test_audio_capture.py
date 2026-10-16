@@ -212,6 +212,7 @@ class FakeOpenAI:
     def __init__(self) -> None:
         self.requests: list[dict[str, Any]] = []
         self.status = 200
+        self.text_model_available = True
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/audio/transcriptions"
@@ -229,6 +230,15 @@ class FakeOpenAI:
         self.requests.append(fields)
         if self.status != 200:
             return httpx.Response(self.status, json={"error": {"message": f"denied {OPENAI_KEY}"}})
+        model = fields["model"][0]
+        if model == "gpt-transcribe":
+            if not self.text_model_available:
+                return httpx.Response(404, json={"error": {"message": "The model `gpt-transcribe` does not exist"}})
+            return httpx.Response(
+                200, json={"text": "Xin chào, tôi tên là Hùng.", "languages": [{"code": "vi"}], "usage": {}}
+            )
+        if model == "gpt-4o-transcribe":
+            return httpx.Response(200, json={"text": "Xin chào, tôi tên là Hùng."})
         known = fields.get("known_speaker_names[]", [])
         if not known:
             segs = [
@@ -301,7 +311,7 @@ def openai_stt(pm):
 
 def test_openai_diarization_contract_and_speaker_references(pm, db, openai_stt, caplog):
     meeting = create_meeting(pm, source_language="ja")
-    out = start(pm, meeting["id"])
+    out = start(pm, meeting["id"], languages=["ja"])
     sid = out["session"]["id"]
     assert out["session"]["is_demo"] is False and out["session"]["provider_session_id"] == "gpt-4o-transcribe-diarize"
 
@@ -344,6 +354,46 @@ def test_openai_errors_are_safe_and_recorded(pm, db, openai_stt):
     assert len(failed) == 2
     s = pm.get(f"/audio-sessions/{sid}").json()["session"]
     assert "Speech-to-text error" in s["status_message"] and OPENAI_KEY not in json.dumps(s)
+
+
+def test_microphone_uses_language_constrained_text_model(pm, openai_stt):
+    meeting = create_meeting(pm, source_language="vi", target_language="ja", participants=[{"display_name": "Tanaka"}])
+    out = start(pm, meeting["id"])
+    assert out["session"]["capture_config"]["languages"] == ["vi", "ja"]
+    entries = chunk(pm, out["session"]["id"], "mic", 0, make_wav(2.0)).json()["entries"]
+    req = openai_stt.requests[0]
+    assert req["model"] == ["gpt-transcribe"] and req["response_format"] == ["json"]
+    assert req["languages[]"] == ["vi", "ja"]  # recognition constrained to the meeting languages
+    assert "Tanaka" in req["keywords[]"]
+    assert "known_speaker_names[]" not in req and "language" not in req
+    assert entries[0]["speaker_label"] == "Tôi" and entries[0]["source_language"] == "vi"
+    assert entries[0]["source_metadata"]["stt_model"] == "gpt-transcribe"
+
+
+def test_text_model_falls_back_when_unavailable(pm, openai_stt):
+    openai_stt.text_model_available = False
+    meeting = create_meeting(pm, participants=[{"display_name": "Tanaka"}])
+    sid = start(pm, meeting["id"], languages=["vi"])["session"]["id"]
+    e = chunk(pm, sid, "mic", 0, make_wav(2.0)).json()["entries"]
+    assert [r["model"] for r in openai_stt.requests] == [["gpt-transcribe"], ["gpt-4o-transcribe"]]
+    fallback = openai_stt.requests[1]
+    assert fallback["language"] == ["vi"] and "Tanaka" in fallback["prompt"][0]
+    assert e[0]["source_metadata"]["stt_model"] == "gpt-4o-transcribe"
+
+
+def test_near_silence_is_not_sent_or_billed(pm, db, openai_stt):
+    meeting = create_meeting(pm)
+    sid = start(pm, meeting["id"])["session"]["id"]
+    quiet = make_wav(2.0, freq=220.0)
+    # Same WAV container, amplitude scaled far below speech level.
+    import array
+
+    header, frames = quiet[:44], array.array("h", quiet[44:])
+    frames = array.array("h", (x // 200 for x in frames))
+    r = chunk(pm, sid, "meeting", 0, header + frames.tobytes())
+    assert r.status_code == 200 and r.json()["entries"] == []
+    assert openai_stt.requests == []
+    assert db.scalars(select(UsageRecord).where(UsageRecord.operation == "speech_to_text")).all() == []
 
 
 # ---- unit ----------------------------------------------------------------------

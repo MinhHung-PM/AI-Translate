@@ -9,7 +9,7 @@ import { useMeeting } from "@/components/meeting/use-meeting";
 import { api } from "@/lib/api";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import type { LiveSession, TranscriptEntry } from "@/lib/types";
+import type { Language, LiveSession, TranscriptEntry } from "@/lib/types";
 
 interface Feed {
   session: LiveSession | null;
@@ -145,7 +145,12 @@ export default function LivePage() {
           />
         </div>
       )}
-      {audioMode && <AudioCapturePanel meetingId={id} session={feed?.session ?? null} onChanged={() => setRefresh((n) => n + 1)} />}
+      {audioMode && <AudioCapturePanel
+          meetingId={id}
+          session={feed?.session ?? null}
+          defaultLanguages={[...new Set([meeting.source_language, meeting.target_language].filter((x): x is Language => !!x))]}
+          onChanged={() => setRefresh((n) => n + 1)}
+        />}
 
       {canStart && !audioMode && (
         <Card title={t.live.start} className="mb-4">

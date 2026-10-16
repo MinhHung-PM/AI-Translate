@@ -14,11 +14,15 @@ Trình duyệt (Chrome/Edge)
   nguồn 1: Âm thanh cuộc họp  ← getDisplayMedia: "Toàn màn hình + Chia sẻ âm thanh hệ thống"
                                 (ứng dụng Teams/Zoom) hoặc "Tab + Chia sẻ âm thanh tab" (họp trên web)
   nguồn 2..n: Micro            ← getUserMedia (chọn thiết bị cụ thể; có khử vọng/khử ồn)
-      │ AudioWorklet → trộn mono → 16 kHz → phát hiện giọng nói (VAD) → mỗi câu 0,3–8 giây
+      │ AudioWorklet → trộn mono → 16 kHz → phát hiện giọng nói (VAD) → mỗi câu 0,5–12 giây, cắt tại chỗ ngắt hơi
       ▼ POST /audio-sessions/{id}/chunks  (WAV PCM 16-bit, tuần tự theo từng nguồn)
 Máy chủ
-  OpenAI gpt-4o-transcribe-diarize (response_format=diarized_json)
-      + tối đa 4 mẫu giọng (2–10 s) của người nói đã biết → giữ nhãn người nói nhất quán
+  đoạn gần như im lặng (RMS < AUDIO_MIN_RMS) → bỏ qua, không gửi, không tính phí
+  Micro / nguồn "một người nói": OpenAI gpt-transcribe (languages[] = ngôn ngữ đã chọn,
+      keywords[] = glossary dự án + tên người tham gia); tự lùi về gpt-4o-transcribe nếu tài khoản
+      chưa dùng được gpt-transcribe
+  Âm thanh cuộc họp (nhiều người): gpt-4o-transcribe-diarize (diarized_json; language chỉ khi chọn
+      đúng 1 ngôn ngữ) + tối đa 4 mẫu giọng (2–10 s) → giữ nhãn người nói nhất quán
   → hồ sơ người nói S1, S2… ("Người 1"…; đổi tên được) → ingest_event (chống trùng)
   → dịch ngay bằng nhà cung cấp AI mặc định → màn hình Trực tiếp (cập nhật mỗi giây)
 ```
@@ -34,11 +38,23 @@ Máy chủ
   khi quay lại → đổi tên trùng nhau để gộp hiển thị.
 * Đổi tên người nói cập nhật lại toàn bộ câu đã có của người đó.
 
+### Chất lượng nhận dạng
+
+* **Chọn đúng ngôn ngữ người nói** trên màn hình thu âm (mặc định: ngôn ngữ nguồn + đích của cuộc họp).
+  Model chỉ nhận dạng trong các ngôn ngữ này → tránh lỗi "ảo giác" ra tiếng Tây Ban Nha/Bồ Đào Nha… với
+  đoạn ngắn hoặc có tiếng ồn. Một ngôn ngữ = chính xác nhất.
+* Thêm thuật ngữ và tên riêng vào **Glossary** của dự án và danh sách người tham gia: chúng được gửi làm
+  `keywords` để nhận đúng tên người, tên hệ thống.
+* Model tách người nói (diarize) chưa hỗ trợ `languages`/`keywords`; với âm thanh cuộc họp, chọn đúng một
+  ngôn ngữ nếu có thể.
+* Nhãn ngôn ngữ của mỗi câu là ngôn ngữ model thực sự nhận ra (không gán theo mặc định của cuộc họp).
+* Ghi chú "Lưu ý mơ hồ" của bản dịch luôn viết bằng tiếng Việt.
+
 ### Độ trễ
 
-Thời gian người nói dứt câu (VAD chờ 0,5 s im lặng) + nhận dạng (thường 1–3 s, ước tính) + dịch (1–2 s) ≈
-**2–5 giây** sau khi dứt câu; màn hình cập nhật ngay khi có kết quả. Người nói liên tục bị cắt mỗi 8 giây
-để chữ hiện sớm. (Ước tính — chưa đo với OpenAI thật.)
+Thời gian người nói dứt câu (VAD chờ 0,65 s im lặng) + nhận dạng (thường 1–3 s, ước tính) + dịch (1–2 s) ≈
+**2–5 giây** sau khi dứt câu; màn hình cập nhật ngay khi có kết quả. Người nói liên tục bị cắt tối đa mỗi
+12 giây, tại khoảng ngắt nhỏ nhất trong 2 giây cuối (không cắt giữa chữ). (Ước tính — chưa đo với OpenAI thật.)
 
 ## Cấu hình
 
@@ -49,7 +65,9 @@ Thời gian người nói dứt câu (VAD chờ 0,5 s im lặng) + nhận dạng
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
-| `STT_MODEL` | `gpt-4o-transcribe-diarize` | model nhận dạng + tách người nói |
+| `STT_MODEL` | `gpt-4o-transcribe-diarize` | model nhận dạng + tách người nói (âm thanh cuộc họp) |
+| `STT_TEXT_MODEL` / `STT_TEXT_FALLBACK_MODEL` | `gpt-transcribe` / `gpt-4o-transcribe` | model cho nguồn một người nói |
+| `AUDIO_MIN_RMS` | `0.004` | ngưỡng âm lượng tối thiểu để gửi đi nhận dạng |
 | `STT_TIMEOUT_SECONDS` | `60` | |
 | `AUDIO_CHUNK_MAX_SECONDS` / `AUDIO_CHUNK_MAX_BYTES` | `30` / `2000000` | giới hạn mỗi đoạn |
 | `AUDIO_MAX_SOURCES` | `4` | số nguồn mỗi phiên |

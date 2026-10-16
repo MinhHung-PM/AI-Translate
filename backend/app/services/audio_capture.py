@@ -41,7 +41,7 @@ from app.core.errors import Conflict, ProviderNotConfigured, SpeechToTextFailed,
 from app.db.base import utcnow
 from app.integrations.models import CanonicalEvent
 from app.models import AIProviderConfiguration, AudioSpeakerProfile, LiveSession, Meeting, Project, TranscriptEntry
-from app.models.enums import LiveSessionStatus
+from app.models.enums import Language, LiveSessionStatus
 from app.services.ingestion import ingest_event
 from app.services.provider_config import get_keyring, resolve_provider
 from app.services.transcripts.normalize import clean_text
@@ -60,6 +60,8 @@ class AudioSourceIn(BaseModel):
 
 class AudioSessionIn(BaseModel):
     sources: list[AudioSourceIn] = Field(min_length=1)
+    # Languages that may be spoken (constrains recognition). Default: the meeting's languages.
+    languages: list[Literal["ja", "vi", "en"]] | None = Field(default=None, min_length=1, max_length=3)
     translate: bool = True
     consent_confirmed: bool
 
@@ -85,7 +87,16 @@ def resolve_stt(db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None) -
     )
     if config is not None:
         resolved = resolve_provider(db, user_id, session_id, config.id)
-        return OpenAIDiarizingSTT(resolved.credentials, settings.stt_model, settings.stt_timeout_seconds), "byok"
+        return (
+            OpenAIDiarizingSTT(
+                resolved.credentials,
+                settings.stt_model,
+                settings.stt_timeout_seconds,
+                text_model=settings.stt_text_model,
+                text_fallback_model=settings.stt_text_fallback_model,
+            ),
+            "byok",
+        )
     if settings.enable_mock_provider:
         return MockSTT(), "none"
     raise ProviderNotConfigured(
@@ -123,6 +134,9 @@ def start_session(
     if active_session(db, meeting) is not None:
         raise Conflict("A live session is already running for this meeting")
     stt, _ = resolve_stt(db, user_id, session_id)  # fail fast when STT is unavailable
+    languages = list(dict.fromkeys(body.languages or [])) or [
+        lang.value for lang in dict.fromkeys(x for x in (meeting.source_language, meeting.target_language) if x)
+    ]
     live = LiveSession(
         meeting_id=meeting.id,
         connector=CONNECTOR,
@@ -135,6 +149,7 @@ def start_session(
         capture_config={
             "sources": [s.model_dump() for s in body.sources],
             "translate": body.translate,
+            "languages": languages or ["ja", "vi", "en"],
             "stt_model": stt.model,
             "consent_confirmed_at": utcnow().isoformat(),
         },
@@ -331,16 +346,29 @@ def process_chunk(
         return ChunkOutcome(entries=list(existing), duplicate=True)
 
     audio = parse_wav(wav_bytes, max_seconds=settings.audio_chunk_max_seconds)
+    if audio.rms < settings.audio_min_rms:
+        # Near-silence: not sent (STT models invent text on silence) and not billed.
+        live.last_event_at = utcnow()
+        db.commit()
+        return ChunkOutcome(note=None)
     stt, key_source = resolve_stt(db, user_id, session_id)
     diarize = not source.get("single_speaker")
     known_pairs = _known_speakers(db, live, source_id) if diarize else []
-    language = meeting.source_language.value if meeting.source_language else None
+    languages: list[str] = list((live.capture_config or {}).get("languages") or [])
 
     meter = DbUsageMeter(db)
     ctx = UsageContext(user_id, meeting.project_id, meeting.id, None, stt.key, stt.model, key_source)
     started = time.monotonic()
     try:
-        result = stt.transcribe(audio.to_wav(), language=language, known=[k for _, k in known_pairs], diarize=diarize)
+        if diarize:
+            result = stt.transcribe(
+                audio.to_wav(),
+                language=languages[0] if len(languages) == 1 else None,
+                known=[k for _, k in known_pairs],
+                diarize=True,
+            )
+        else:
+            result = stt.transcribe_text(audio.to_wav(), languages=languages, keywords=_keywords(db, meeting))
     except ProviderError as err:
         rec = meter.record(
             ctx,
@@ -356,6 +384,7 @@ def process_chunk(
         raise SpeechToTextFailed(
             err.message, details={"provider_code": err.code.value, "retryable": err.retryable}
         ) from None
+    ctx.model = result.model
     rec = meter.record(
         ctx,
         "speech_to_text",
@@ -364,7 +393,8 @@ def process_chunk(
         success=True,
     )
     rec.audio_seconds = round(audio.duration_s, 2)
-    rec.estimated_cost_usd = stt_cost(stt.key, stt.model, audio.duration_s)
+    rec.estimated_cost_usd = stt_cost(stt.key, result.model, audio.duration_s)
+    reported = result.language if result.language in {lang.value for lang in Language} else None
 
     known = {p.speaker_key: p for p, _ in known_pairs}
     mapping = _assign_speakers(db, live, source_id, audio, result, known) if diarize else {}
@@ -384,7 +414,8 @@ def process_chunk(
             speaker_display_name=speaker_name,
             start_timestamp_ms=offset_ms + int(seg.start_s * 1000),
             end_timestamp_ms=offset_ms + int(seg.end_s * 1000),
-            source_language=meeting.source_language,
+            # Language actually recognised (never forced to the meeting default; ingestion detects it).
+            source_language=Language(reported) if reported else None,
             original_text=seg.text,
             is_demo=stt.is_mock,
             source_metadata={
@@ -393,7 +424,7 @@ def process_chunk(
                 "audio_source_id": source_id,
                 "audio_source_kind": source.get("kind"),
                 "audio_speaker_key": profile.speaker_key if profile else None,
-                "stt_model": stt.model,
+                "stt_model": result.model,
             },
         )
         entry, created = ingest_event(db, meeting, event)
@@ -444,6 +475,24 @@ def translate_now(
     if outcome.failed:
         return f"{outcome.failed} segment(s) could not be translated; retry from the transcript view."
     return None
+
+
+def _keywords(db: Session, meeting: Meeting) -> list[str]:
+    """Glossary terms and participant names guide recognition of names and jargon."""
+    from app.models import GlossaryEntry, MeetingParticipant
+
+    terms = db.scalars(
+        select(GlossaryEntry.source_term)
+        .where(GlossaryEntry.project_id == meeting.project_id, GlossaryEntry.is_active.is_(True))
+        .limit(60)
+    ).all()
+    names = db.scalars(select(MeetingParticipant.display_name).where(MeetingParticipant.meeting_id == meeting.id)).all()
+    out: list[str] = []
+    for w in [*names, *terms]:
+        w = clean_text(w)[:50]
+        if w and w not in out:
+            out.append(w)
+    return out[:50]
 
 
 def list_speakers(db: Session, live: LiveSession) -> list[AudioSpeakerProfile]:

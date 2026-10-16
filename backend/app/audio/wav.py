@@ -29,6 +29,18 @@ class PcmAudio:
         b = min(len(self.frames), int(end_s * self.sample_rate) * 2)
         return PcmAudio(self.frames[a:b] if b > a else b"", self.sample_rate)
 
+    @property
+    def rms(self) -> float:
+        """Root-mean-square level, 0..1."""
+        import array
+        import math
+
+        samples = array.array("h")
+        samples.frombytes(self.frames[: len(self.frames) // 2 * 2])
+        if not samples:
+            return 0.0
+        return math.sqrt(sum(x * x for x in samples) / len(samples)) / 32768.0
+
     def to_wav(self) -> bytes:
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:

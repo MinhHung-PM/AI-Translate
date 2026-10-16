@@ -8,7 +8,7 @@ import type { Utterance } from "@/lib/audio/segmenter";
 import { encodeWav } from "@/lib/audio/wav";
 import { errorMessage } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import type { AudioChunkResult, AudioSession, AudioSpeaker, LiveSession } from "@/lib/types";
+import type { AudioChunkResult, AudioSession, AudioSpeaker, Language, LiveSession } from "@/lib/types";
 
 interface PickedSource {
   id: string;
@@ -51,11 +51,24 @@ function supported(): boolean {
  * in the browser and sent to the server, which recognises speech, separates
  * speakers and translates. The parent page shows the resulting live feed.
  */
-export function AudioCapturePanel({ meetingId, session, onChanged }: { meetingId: string; session: LiveSession | null; onChanged: () => void }) {
+const ALL_LANGS: Language[] = ["ja", "vi", "en"];
+
+export function AudioCapturePanel({
+  meetingId,
+  session,
+  defaultLanguages,
+  onChanged,
+}: {
+  meetingId: string;
+  session: LiveSession | null;
+  defaultLanguages: Language[];
+  onChanged: () => void;
+}) {
   const [mics, setMics] = useState<MediaDeviceInfo[] | null>(null);
   const [picked, setPicked] = useState<PickedSource[]>([]);
   const [consent, setConsent] = useState(false);
   const [translate, setTranslate] = useState(true);
+  const [langs, setLangs] = useState<Language[]>(defaultLanguages.length ? defaultLanguages : ALL_LANGS);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [stats, setStats] = useState<Record<string, SourceStats>>({});
   const [speakers, setSpeakers] = useState<AudioSpeaker[]>([]);
@@ -213,6 +226,7 @@ export function AudioCapturePanel({ meetingId, session, onChanged }: { meetingId
       const res = await api.post<AudioSession>(`/meetings/${meetingId}/audio-sessions`, {
         sources: picked.map((p) => ({ id: p.id, kind: p.kind, label: p.label.trim() || p.id, single_speaker: p.singleSpeaker })),
         translate,
+        languages: langs,
         consent_confirmed: consent,
       });
       const sid = res.session.id;
@@ -346,6 +360,22 @@ export function AudioCapturePanel({ meetingId, session, onChanged }: { meetingId
                 ))}
               </ul>
             )}
+
+            <section>
+              <h3 className="mb-1 font-medium">{t.audio.languages}</h3>
+              <div className="flex flex-wrap gap-4" data-testid="audio-languages">
+                {ALL_LANGS.map((l) => (
+                  <Checkbox
+                    key={l}
+                    label={t.languages[l]}
+                    checked={langs.includes(l)}
+                    disabled={langs.length === 1 && langs.includes(l)}
+                    onChange={(e) => setLangs(e.target.checked ? ALL_LANGS.filter((x) => x === l || langs.includes(x)) : langs.filter((x) => x !== l))}
+                  />
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-muted">{t.audio.languagesHint}</p>
+            </section>
 
             <div className="space-y-2">
               <Checkbox label={t.audio.translate} checked={translate} onChange={(e) => setTranslate(e.target.checked)} />

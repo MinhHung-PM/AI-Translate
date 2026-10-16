@@ -83,7 +83,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # --- Live audio capture (speech-to-text + speaker diarization) ---------
-    stt_model: str = "gpt-4o-transcribe-diarize"
+    stt_model: str = "gpt-4o-transcribe-diarize"  # speaker separation (meeting audio)
+    stt_text_model: str = "gpt-transcribe"  # single speaker: supports languages[] + keywords[]
+    stt_text_fallback_model: str = "gpt-4o-transcribe"
+    # Chunks quieter than this RMS (0..1) are not sent: near-silence makes STT models hallucinate.
+    audio_min_rms: float = 0.004
     stt_timeout_seconds: float = 60.0
     audio_chunk_max_seconds: float = 30.0
     audio_chunk_max_bytes: int = 2_000_000

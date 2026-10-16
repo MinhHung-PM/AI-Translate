@@ -73,6 +73,9 @@ describe("UtteranceSegmenter", () => {
     const long = seg.push(join(speech(7000), silence(1000)));
     expect(long.length).toBeGreaterThanOrEqual(2);
     expect(Math.max(...long.map((u) => u.durationMs))).toBeLessThanOrEqual(3030);
+    // Nothing is lost when a long utterance is split.
+    const total = long.reduce((n, u) => n + u.durationMs, 0);
+    expect(total).toBeGreaterThanOrEqual(7000);
   });
   it("flushes the utterance in progress and adapts to background noise", () => {
     const seg = new UtteranceSegmenter();
@@ -80,6 +83,15 @@ describe("UtteranceSegmenter", () => {
     expect(seg.threshold).toBeGreaterThan(0.02);
     expect(seg.flush()).toHaveLength(1);
     expect(seg.flush()).toHaveLength(0);
+  });
+  it("splits long speech at a pause between words, not mid-syllable", () => {
+    const seg = new UtteranceSegmenter({ maxUtteranceMs: 3000 });
+    const utts = seg.push(join(silence(500), speech(6000), silence(1000)));
+    // Each cut lands in a 90 ms gap: the next utterance starts with a (quiet) gap frame or a syllable onset.
+    for (const u of utts.slice(0, -1)) {
+      const tail = u.samples.slice(-Math.round(RATE * 0.03));
+      expect(rms(tail)).toBeLessThan(0.05);
+    }
   });
   it("does not trigger on steady background noise", () => {
     const seg = new UtteranceSegmenter();

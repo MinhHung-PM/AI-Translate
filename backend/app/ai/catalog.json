@@ -64,6 +64,16 @@
           "id": "gpt-4o-transcribe-diarize",
           "label": "GPT-4o Transcribe Diarize",
           "audio_per_minute": 0.006
+        },
+        {
+          "id": "gpt-4o-transcribe",
+          "label": "GPT-4o Transcribe",
+          "audio_per_minute": 0.006
+        },
+        {
+          "id": "gpt-transcribe",
+          "label": "GPT Transcribe",
+          "audio_per_minute": null
         }
       ]
     },

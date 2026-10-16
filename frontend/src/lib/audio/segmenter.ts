@@ -38,6 +38,7 @@ export class UtteranceSegmenter {
   private recentLevels: number[] = []; // last ~3 s of frame levels (minimum statistics)
   private preRoll: Float32Array[] = [];
   private current: Float32Array[] | null = null;
+  private currentLevels: number[] = [];
   private currentStart = 0;
   private voicedMs = 0;
   private silenceMs = 0;
@@ -48,9 +49,9 @@ export class UtteranceSegmenter {
     this.o = {
       sampleRate: 16000,
       frameMs: 30,
-      minSpeechMs: 300,
-      endSilenceMs: 500,
-      maxUtteranceMs: 8000,
+      minSpeechMs: 500,
+      endSilenceMs: 650,
+      maxUtteranceMs: 12000,
       preRollMs: 240,
       minThreshold: 0.008,
       ...options,
@@ -97,6 +98,7 @@ export class UtteranceSegmenter {
       if (voiced) {
         const pre = this.preRoll;
         this.current = [...pre, frame];
+        this.currentLevels = [...pre.map(() => 0), level];
         this.currentStart = frameStartMs - pre.length * this.o.frameMs;
         this.preRoll = [];
         this.voicedMs = this.o.frameMs;
@@ -109,6 +111,7 @@ export class UtteranceSegmenter {
       return null;
     }
     this.current.push(frame);
+    this.currentLevels.push(level);
     if (voiced) {
       this.voicedMs += this.o.frameMs;
       this.silenceMs = 0;
@@ -116,14 +119,45 @@ export class UtteranceSegmenter {
       this.silenceMs += this.o.frameMs;
     }
     const durationMs = this.current.length * this.o.frameMs;
-    if (this.silenceMs >= this.o.endSilenceMs || durationMs >= this.o.maxUtteranceMs) return this.finish();
+    if (this.silenceMs >= this.o.endSilenceMs) return this.finish();
+    if (durationMs >= this.o.maxUtteranceMs) return this.splitAtQuietestPoint();
     return null;
   }
 
-  private finish(): Utterance | null {
+  /** Long monologue: cut at the quietest frame of the last ~2 s (a breath or a
+   * pause between words) instead of mid-word; the rest starts the next utterance. */
+  private splitAtQuietestPoint(): Utterance | null {
+    const frames = this.current ?? [];
+    const levels = this.currentLevels;
+    const look = Math.min(frames.length - 1, Math.round(2000 / this.o.frameMs));
+    let cut = frames.length;
+    let best = Infinity;
+    for (let i = frames.length - look; i < frames.length; i++) {
+      if (levels[i] < best) {
+        best = levels[i];
+        cut = i + 1;
+      }
+    }
+    const rest = frames.slice(cut);
+    const restLevels = levels.slice(cut);
+    this.current = frames.slice(0, cut);
+    this.currentLevels = levels.slice(0, cut);
+    const restStart = this.currentStart + cut * this.o.frameMs;
+    const u = this.finish(true);
+    if (rest.length) {
+      this.current = rest;
+      this.currentLevels = restLevels;
+      this.currentStart = restStart;
+      this.voicedMs = restLevels.filter((l) => l > this.threshold).length * this.o.frameMs;
+    }
+    return u;
+  }
+
+  private finish(forced = false): Utterance | null {
     const frames = this.current ?? [];
     this.current = null;
-    const keep = this.voicedMs >= this.o.minSpeechMs;
+    this.currentLevels = [];
+    const keep = forced || this.voicedMs >= this.o.minSpeechMs;
     this.voicedMs = 0;
     this.silenceMs = 0;
     if (!keep) return null;

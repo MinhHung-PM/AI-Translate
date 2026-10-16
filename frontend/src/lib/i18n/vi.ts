@@ -529,6 +529,8 @@ export const vi = {
     me: "Tôi",
     remove: "Bỏ",
     translate: "Dịch ngay từng câu",
+    languages: "Ngôn ngữ người nói trong cuộc họp",
+    languagesHint: "Chỉ chọn các ngôn ngữ thực sự được nói: hệ thống chỉ nhận dạng trong các ngôn ngữ này, tránh nhận nhầm sang ngôn ngữ khác. Chọn 1 ngôn ngữ cho kết quả chính xác nhất.",
     consent: "Tôi đã thông báo cho những người tham gia rằng âm thanh cuộc họp được ghi nhận để nhận dạng và dịch.",
     start: "Bắt đầu thu âm",
     stop: "Dừng thu âm",

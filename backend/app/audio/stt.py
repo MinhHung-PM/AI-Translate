@@ -13,7 +13,7 @@ from __future__ import annotations
 import base64
 import logging
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -54,6 +54,7 @@ class SttResult:
     duration_s: float
     model: str
     known_names: list[str] = field(default_factory=list)
+    language: str | None = None  # language reported by the provider (ISO-639-1), if any
 
 
 class SpeechToText(Protocol):
@@ -65,21 +66,40 @@ class SpeechToText(Protocol):
         self, wav: bytes, *, language: str | None, known: list[KnownSpeaker], diarize: bool
     ) -> SttResult: ...
 
+    def transcribe_text(self, wav: bytes, *, languages: list[str], keywords: list[str]) -> SttResult: ...
+
 
 def _data_url(wav: bytes) -> str:
     return "data:audio/wav;base64," + base64.b64encode(wav).decode()
 
 
 class OpenAIDiarizingSTT:
+    """``transcribe`` = speaker-separated (diarize model). ``transcribe_text`` =
+    single-speaker text with ``gpt-transcribe``, which accepts the list of
+    possible ``languages`` and ``keywords`` (glossary): this prevents the
+    wrong-language hallucinations seen on short clips. Falls back to
+    ``gpt-4o-transcribe`` when the account cannot use ``gpt-transcribe``."""
+
     is_mock = False
 
-    def __init__(self, creds: Credentials, model: str, timeout_s: float, key: str = "openai") -> None:
+    def __init__(
+        self,
+        creds: Credentials,
+        model: str,
+        timeout_s: float,
+        key: str = "openai",
+        text_model: str = "gpt-transcribe",
+        text_fallback_model: str = "gpt-4o-transcribe",
+    ) -> None:
         if not creds.api_key:
             raise ProviderError(ProviderErrorCode.not_configured, "An OpenAI API key is required for speech-to-text")
         self.key = key
         self.model = model
+        self.text_model = text_model
+        self.text_fallback_model = text_fallback_model
         self._creds = creds
         self._timeout = timeout_s
+        self._use_fallback = False
 
     def _error(self, exc: Exception) -> ProviderError:
         if isinstance(exc, httpx.TimeoutException):
@@ -111,6 +131,73 @@ class OpenAIDiarizingSTT:
             )
         return ProviderError(ProviderErrorCode.unavailable, "Unexpected speech-to-text failure")
 
+    def _post(self, data: dict[str, str | list[str]], wav: bytes) -> dict[str, Any]:
+        base = (self._creds.base_url or "https://api.openai.com/v1").rstrip("/")
+        with httpx.Client(
+            timeout=self._timeout,
+            headers={"Authorization": f"Bearer {self._creds.api_key}"},
+            transport=_transport_override,
+            follow_redirects=False,
+        ) as client:
+            resp = client.post(
+                f"{base}/audio/transcriptions", data=data, files={"file": ("chunk.wav", wav, "audio/wav")}
+            )
+            resp.raise_for_status()
+            body = resp.json()
+        if not isinstance(body, dict):
+            raise ProviderError(ProviderErrorCode.invalid_output, "Unexpected speech-to-text response")
+        return body
+
+    def transcribe_text(self, wav: bytes, *, languages: list[str], keywords: list[str]) -> SttResult:
+        model = self.text_fallback_model if self._use_fallback else self.text_model
+        for _ in range(2):
+            data: dict[str, str | list[str]] = {"model": model, "response_format": "json"}
+            if model == self.text_model:
+                if languages:
+                    data["languages[]"] = languages
+                if keywords:
+                    data["keywords[]"] = keywords
+            else:  # gpt-4o-transcribe: one language hint + free-text prompt
+                if len(languages) == 1:
+                    data["language"] = languages[0]
+                if keywords:
+                    data["prompt"] = "Thuật ngữ / 用語 / Terms: " + ", ".join(keywords)
+            try:
+                body = self._post(data, wav)
+                break
+            except httpx.HTTPStatusError as exc:
+                unknown_model = (
+                    exc.response.status_code in (400, 404)
+                    and model == self.text_model
+                    and ("model" in exc.response.text.lower())
+                )
+                if unknown_model:
+                    logger.info("stt.text_model_unavailable", extra={"model": model})
+                    self._use_fallback = True
+                    model = self.text_fallback_model
+                    continue
+                raise self._error(exc) from None
+            except ProviderError:
+                raise
+            except Exception as exc:
+                raise self._error(exc) from None
+        else:  # pragma: no cover - loop always breaks or raises
+            raise ProviderError(ProviderErrorCode.unavailable, "Speech-to-text failed")
+        text = str(body.get("text") or "").strip()
+        langs = body.get("languages")
+        language = None
+        if isinstance(langs, list) and langs and isinstance(langs[0], dict):
+            language = str(langs[0].get("code") or "") or None
+        elif isinstance(body.get("language"), str):
+            language = str(body["language"])
+        duration = float(body.get("duration") or 0.0) if isinstance(body.get("duration"), (int, float)) else 0.0
+        return SttResult(
+            segments=[DiarizedSegment(text, 0.0, duration, None)] if text else [],
+            duration_s=duration,
+            model=model,
+            language=language,
+        )
+
     def transcribe(self, wav: bytes, *, language: str | None, known: list[KnownSpeaker], diarize: bool) -> SttResult:
         known = known[:MAX_KNOWN_SPEAKERS] if diarize else []
         data: dict[str, str | list[str]] = {"model": self.model, "response_format": "diarized_json"}
@@ -120,19 +207,10 @@ class OpenAIDiarizingSTT:
         if known:
             data["known_speaker_names[]"] = [k.name for k in known]
             data["known_speaker_references[]"] = [_data_url(k.reference_wav) for k in known]
-        base = (self._creds.base_url or "https://api.openai.com/v1").rstrip("/")
         try:
-            with httpx.Client(
-                timeout=self._timeout,
-                headers={"Authorization": f"Bearer {self._creds.api_key}"},
-                transport=_transport_override,
-                follow_redirects=False,
-            ) as client:
-                resp = client.post(
-                    f"{base}/audio/transcriptions", data=data, files={"file": ("chunk.wav", wav, "audio/wav")}
-                )
-                resp.raise_for_status()
-                body = resp.json()
+            body = self._post(data, wav)
+        except ProviderError:
+            raise
         except Exception as exc:
             raise self._error(exc) from None
         try:
@@ -179,3 +257,8 @@ class MockSTT:
             model=self.model,
             known_names=[k.name for k in known],
         )
+
+    def transcribe_text(self, wav: bytes, *, languages: list[str], keywords: list[str]) -> SttResult:
+        result = self.transcribe(wav, language=None, known=[], diarize=False)
+        result.language = languages[0] if len(languages) == 1 else None
+        return result
