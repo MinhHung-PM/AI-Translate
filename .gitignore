@@ -7,6 +7,9 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+*.egg-info/
+# Local tool artifact (the project installs with pip; see backend/Dockerfile)
+backend/uv.lock
 
 # Node
 node_modules/
