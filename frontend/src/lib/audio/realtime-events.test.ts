@@ -59,3 +59,40 @@ describe("RealtimeEventProcessor", () => {
     expect(finals[0].durationMs).toBeNull();
   });
 });
+
+describe("RealtimeEventProcessor — streaming model without server VAD", () => {
+  it("shows deltas before an item exists, then finalizes once under the committed item id", () => {
+    const { interim, finals, send } = setup();
+    send({ type: "conversation.item.input_audio_transcription.delta", delta: "東京港の" });
+    send({ type: "conversation.item.input_audio_transcription.delta", delta: "大井ふ頭と" });
+    expect(Object.values(interim).join("")).toContain("東京港の大井ふ頭と");
+    send({ type: "input_audio_buffer.committed", item_id: "item_9" });
+    send({ type: "conversation.item.input_audio_transcription.delta", item_id: "item_9", delta: "青海ふ頭で" });
+    expect(interim.item_9).toBe("東京港の大井ふ頭と青海ふ頭で");
+    send({ type: "conversation.item.input_audio_transcription.completed", item_id: "item_9", transcript: "東京港の大井ふ頭と青海ふ頭で…" });
+    expect(finals.map((f) => f.itemId)).toEqual(["item_9"]);
+    expect(Object.values(interim).every((v) => v === "")).toBe(true);
+  });
+
+  it("safety net: streamed text with no 'completed' event is saved after it goes idle", () => {
+    const { p, finals, send } = setup();
+    let now = 1000;
+    p.now = () => now;
+    send({ type: "conversation.item.input_audio_transcription.delta", delta: "人手不足を補うため" });
+    p.flushStale(7000);
+    expect(finals).toHaveLength(0); // still fresh
+    now = 9000;
+    p.flushStale(7000);
+    expect(finals).toHaveLength(1);
+    expect(finals[0].text).toBe("人手不足を補うため");
+    expect(finals[0].itemId).toMatch(/^local-/);
+    p.flushStale(0);
+    expect(finals).toHaveLength(1); // not saved twice
+  });
+
+  it("ignores 'commit on empty buffer' errors", () => {
+    const { errors, send } = setup();
+    send({ type: "error", error: { code: "input_audio_buffer_commit_empty", message: "buffer too small" } });
+    expect(errors).toEqual([]);
+  });
+});

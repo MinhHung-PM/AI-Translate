@@ -7,6 +7,8 @@ export interface RealtimeToken {
   expires_at: number;
   model: string;
   calls_url: string;
+  /** No server VAD: the browser commits each utterance (input_audio_buffer.commit). */
+  client_commits?: boolean;
 }
 
 export type CaptionState = "connecting" | "connected" | "reconnecting" | "failed" | "closed";
@@ -19,6 +21,9 @@ export type CaptionState = "connecting" | "connected" | "reconnecting" | "failed
  */
 export class RealtimeCaptionSource {
   private pc: RTCPeerConnection | null = null;
+  private dc: RTCDataChannel | null = null;
+  private clientCommits = false;
+  private staleTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private attempts = 0;
   readonly processor: RealtimeEventProcessor;
@@ -39,15 +44,19 @@ export class RealtimeCaptionSource {
     this.onState(this.attempts ? "reconnecting" : "connecting", this.attempts);
     const token = await this.getToken();
     this.model = token.model;
+    this.clientCommits = !!token.client_commits;
     const pc = new RTCPeerConnection();
     this.pc = pc;
     for (const track of this.stream.getAudioTracks()) pc.addTrack(track, this.stream);
     const dc = pc.createDataChannel("oai-events");
+    this.dc = dc;
     dc.onmessage = (e: MessageEvent<string>) => this.processor.handle(e.data);
     dc.onopen = () => {
       this.processor.baseMs = this.clock();
       this.attempts = 0;
       this.onState("connected", 0);
+      // Safety net: keep no streamed text unsaved if a "completed" event never arrives.
+      if (!this.staleTimer) this.staleTimer = setInterval(() => this.processor.flushStale(7000), 1000);
     };
     pc.onconnectionstatechange = () => {
       if (this.stopped || this.pc !== pc) return;
@@ -62,6 +71,12 @@ export class RealtimeCaptionSource {
     });
     if (!res.ok) throw new Error(`OpenAI Realtime rejected the connection (${res.status})`);
     await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
+  }
+
+  /** End of an utterance detected locally (pause or 12 s cap): ask OpenAI to finalize it. */
+  commit(): void {
+    if (!this.clientCommits || this.dc?.readyState !== "open") return;
+    this.dc.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
   }
 
   private async reconnect(): Promise<void> {
@@ -83,6 +98,10 @@ export class RealtimeCaptionSource {
 
   stop(): void {
     this.stopped = true;
+    this.commit();
+    this.processor.flushStale(0);
+    if (this.staleTimer) clearInterval(this.staleTimer);
+    this.staleTimer = null;
     this.pc?.close();
     this.pc = null;
     this.onState("closed", this.attempts);

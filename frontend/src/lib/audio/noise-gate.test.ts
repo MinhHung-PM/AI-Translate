@@ -72,3 +72,11 @@ describe("noise gate worklet", () => {
     expect(rms(onset)).toBeGreaterThan(0.1);
   });
 });
+
+describe("noise gate bypass (meeting/tab audio in standard mode)", () => {
+  it("passes audio unchanged", () => {
+    const core = new NoiseGateCore(RATE, "bypass");
+    const out = run(core, noise(0.02), 4000);
+    expect(rms(out.slice(-RATE))).toBeGreaterThan(0.02 * 0.5);
+  });
+});

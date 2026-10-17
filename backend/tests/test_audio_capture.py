@@ -415,6 +415,7 @@ class FakeRealtime:
     def __init__(self) -> None:
         self.bodies: list[dict[str, Any]] = []
         self.live_model_available = True
+        self.whisper_available = True
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/realtime/client_secrets"
@@ -424,6 +425,8 @@ class FakeRealtime:
         model = body["session"]["audio"]["input"]["transcription"]["model"]
         if model == "gpt-live-transcribe" and not self.live_model_available:
             return httpx.Response(400, json={"error": {"message": "Invalid model: gpt-live-transcribe"}})
+        if model == "gpt-realtime-whisper" and not self.whisper_available:
+            return httpx.Response(404, json={"error": {"message": "The model gpt-realtime-whisper does not exist"}})
         return httpx.Response(200, json={"value": "ek_test_123", "expires_at": 1999999999, "session": body["session"]})
 
 
@@ -454,7 +457,9 @@ def test_streaming_token_is_ephemeral_and_configured(pm, realtime, caplog):
     r = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"})
     assert r.status_code == 200, r.text
     tok = r.json()
-    assert tok["client_secret"] == "ek_test_123" and tok["model"] == "gpt-live-transcribe"
+    # Default "balanced" latency: true streaming model, browser commits utterances.
+    assert tok["client_secret"] == "ek_test_123" and tok["model"] == "gpt-realtime-whisper"
+    assert tok["client_commits"] is True
     assert tok["calls_url"] == "https://api.openai.com/v1/realtime/calls"
     assert OPENAI_KEY not in r.text and OPENAI_KEY not in caplog.text
     body = realtime.bodies[0]
@@ -462,21 +467,47 @@ def test_streaming_token_is_ephemeral_and_configured(pm, realtime, caplog):
     session = body["session"]
     assert session["type"] == "transcription"
     tr = session["audio"]["input"]["transcription"]
-    assert tr["languages"] == ["vi", "ja"] and "Tanaka" in tr["keywords"]
+    assert tr == {"model": "gpt-realtime-whisper", "delay": "low"}  # no prompt/VAD per spec; 2 languages → auto
     assert session["audio"]["input"]["noise_reduction"] == {"type": "near_field"}
-    assert session["audio"]["input"]["turn_detection"]["type"] == "server_vad"
+    assert session["audio"]["input"]["turn_detection"] is None
     # Meeting audio uses far-field noise reduction.
     pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "meeting"})
     assert realtime.bodies[1]["session"]["audio"]["input"]["noise_reduction"] == {"type": "far_field"}
 
 
+def test_streaming_latency_modes(pm, realtime):
+    meeting = create_meeting(pm, participants=[{"display_name": "Tanaka"}])
+    sid = start(pm, meeting["id"], languages=["ja"], caption_latency="fast")["session"]["id"]
+    tok = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).json()
+    tr = realtime.bodies[-1]["session"]["audio"]["input"]["transcription"]
+    assert tok["model"] == "gpt-realtime-whisper" and tr == {
+        "model": "gpt-realtime-whisper",
+        "language": "ja",
+        "delay": "minimal",
+    }
+    pm.post(f"/audio-sessions/{sid}/stop")
+    sid = start(pm, meeting["id"], languages=["ja", "vi"], caption_latency="accurate")["session"]["id"]
+    tok = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).json()
+    session = realtime.bodies[-1]["session"]
+    tr = session["audio"]["input"]["transcription"]
+    assert tok["model"] == "gpt-live-transcribe" and tok["client_commits"] is False
+    assert tr["languages"] == ["ja", "vi"] and "Tanaka" in tr["keywords"]
+    assert session["audio"]["input"]["turn_detection"]["silence_duration_ms"] == 350
+
+
 def test_streaming_model_fallback(pm, realtime):
+    realtime.whisper_available = False
     realtime.live_model_available = False
     meeting = create_meeting(pm)
     sid = start(pm, meeting["id"], languages=["ja"])["session"]["id"]
     tok = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).json()
-    assert tok["model"] == "gpt-4o-transcribe"
-    tr = realtime.bodies[1]["session"]["audio"]["input"]["transcription"]
+    assert tok["model"] == "gpt-4o-transcribe" and tok["client_commits"] is False
+    assert [b["session"]["audio"]["input"]["transcription"]["model"] for b in realtime.bodies] == [
+        "gpt-realtime-whisper",
+        "gpt-live-transcribe",
+        "gpt-4o-transcribe",
+    ]
+    tr = realtime.bodies[2]["session"]["audio"]["input"]["transcription"]
     assert tr["model"] == "gpt-4o-transcribe" and tr["language"] == "ja"
     assert "languages" not in tr and "在庫引当" in tr["prompt"]  # glossary terms as a prompt hint
 

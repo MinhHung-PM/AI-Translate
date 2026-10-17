@@ -5935,6 +5935,26 @@
       "title": "Mode",
       "default": "streaming"
      },
+     "noise_suppression": {
+      "type": "string",
+      "enum": [
+       "off",
+       "standard",
+       "strong"
+      ],
+      "title": "Noise Suppression",
+      "default": "standard"
+     },
+     "caption_latency": {
+      "type": "string",
+      "enum": [
+       "fast",
+       "balanced",
+       "accurate"
+      ],
+      "title": "Caption Latency",
+      "default": "balanced"
+     },
      "consent_confirmed": {
       "type": "boolean",
       "title": "Consent Confirmed"
@@ -6322,6 +6342,11 @@
        }
       ],
       "title": "Note"
+     },
+     "echoes": {
+      "type": "integer",
+      "title": "Echoes",
+      "default": 0
      }
     },
     "type": "object",
@@ -10495,6 +10520,11 @@
      "calls_url": {
       "type": "string",
       "title": "Calls Url"
+     },
+     "client_commits": {
+      "type": "boolean",
+      "title": "Client Commits",
+      "default": false
      }
     },
     "type": "object",

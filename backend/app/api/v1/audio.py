@@ -60,6 +60,7 @@ class RealtimeTokenOut(BaseModel):
     expires_at: int
     model: str
     calls_url: str
+    client_commits: bool = False
 
 
 class SpeakerRename(BaseModel):
@@ -175,6 +176,7 @@ def create_realtime_token(session_id: uuid.UUID, body: RealtimeTokenIn, auth: Au
         expires_at=token.expires_at,
         model=token.model,
         calls_url="https://api.openai.com/v1/realtime/calls",
+        client_commits=token.client_commits,
     )
 
 

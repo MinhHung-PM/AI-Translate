@@ -19,7 +19,7 @@ const GATE_URL = "/audio-worklets/noise-gate.js";
  *   → adaptive noise gate (public/audio-worklets/noise-gate.js)
  * "off" returns the original stream untouched.
  */
-export async function denoise(input: MediaStream, level: NoiseLevel): Promise<DenoisedSource> {
+export async function denoise(input: MediaStream, level: NoiseLevel, kind: "microphone" | "other" = "microphone"): Promise<DenoisedSource> {
   if (level === "off") {
     return { stream: input, gateOpen: () => true, close: async () => input.getTracks().forEach((t) => t.stop()) };
   }
@@ -34,11 +34,14 @@ export async function denoise(input: MediaStream, level: NoiseLevel): Promise<De
   lp.type = "lowpass";
   lp.frequency.value = 7500;
   lp.Q.value = 0.7;
+  // Meeting / tab audio is already cleaned by Teams/Zoom/YouTube; gating it can swallow quiet speech or
+  // speech over music, so the gate only runs on microphones unless "strong" is chosen.
+  const useGate = kind === "microphone" || level === "strong";
   const gate = new AudioWorkletNode(ctx, "noise-gate", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
     outputChannelCount: [1],
-    processorOptions: { preset: level },
+    processorOptions: { preset: useGate ? level : "bypass" },
   });
   let open = true;
   gate.port.onmessage = (ev: MessageEvent<{ open: boolean }>) => {

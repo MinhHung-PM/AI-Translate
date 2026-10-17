@@ -556,6 +556,17 @@ export const vi = {
     chunkedHint: "Gửi từng câu sau khi dứt câu (chậm hơn vài giây) nhưng tách người nói trong âm thanh cuộc họp bằng mẫu giọng.",
     streamingUnavailable: "Chế độ chữ chạy cần OpenAI API key — đang dùng chế độ theo câu (MOCK).",
     speakingNow: "Đang nói…",
+    latency: {
+      title: "Độ trễ phụ đề",
+      fast: "Nhanh nhất",
+      balanced: "Cân bằng (khuyên dùng)",
+      accurate: "Chính xác theo câu",
+      hint: {
+        fast: "Chữ hiện gần như ngay khi nói (gpt-realtime-whisper, delay minimal); đôi khi kém chính xác hơn.",
+        balanced: "Chữ chạy theo lời nói với độ chính xác tốt (gpt-realtime-whisper, delay low). Câu được chốt khi ngắt hơi hoặc tối đa 12 giây.",
+        accurate: "Chờ hết câu rồi mới hiện (nhận dạng theo lượt nói); hỗ trợ danh sách ngôn ngữ + thuật ngữ.",
+      },
+    },
     noise: {
       title: "Lọc tạp âm tự động",
       off: "Tắt",
@@ -563,8 +574,8 @@ export const vi = {
       strong: "Mạnh — phòng ồn",
       hint: {
         off: "Gửi âm thanh gốc. Chỉ nên dùng khi môi trường rất yên tĩnh hoặc âm thanh đã được xử lý sẵn.",
-        standard: "Lọc tiếng ù (quạt, điều hòa, rung bàn) và tiếng xì; tự học mức ồn nền và hạ nhỏ tạp âm giữa các câu nói. Áp dụng cho cả micro và âm thanh cuộc họp.",
-        strong: "Chặn tạp âm sâu hơn cho phòng đông người, quán cà phê, văn phòng mở. Giọng nói rất nhỏ có thể bị coi là tạp âm.",
+        standard: "Micro: lọc tiếng ù, tiếng xì và hạ nhỏ tạp âm giữa các câu. Âm thanh cuộc họp/tab: chỉ lọc ù/xì (Teams, Zoom, YouTube đã tự lọc ồn; chặn thêm có thể làm mất chữ khi nói nhỏ hoặc có nhạc nền).",
+        strong: "Chặn tạp âm sâu cho mọi nguồn — phòng đông người, quán cà phê, văn phòng mở. Giọng nói rất nhỏ có thể bị coi là tạp âm.",
       },
       passing: "🎙 đang nghe giọng nói",
       blocking: "🔇 đang chặn tạp âm",

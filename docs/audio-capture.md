@@ -8,8 +8,8 @@ hoặc bộ nhận dạng MOCK.
 
 | | **Chữ chạy theo lời nói** (mặc định) | **Theo câu** |
 |---|---|---|
-| Cách chạy | Trình duyệt truyền âm thanh liên tục tới **OpenAI Realtime** qua WebRTC (`gpt-live-transcribe`, `languages` + `keywords`; tự lùi về `gpt-4o-transcribe`) | Cắt câu trong trình duyệt → gửi từng câu lên máy chủ |
-| Chữ hiện | **Ngay khi đang nói** (từng mảnh vài trăm ms); câu hoàn chỉnh được lưu + dịch khi dứt câu | Sau khi dứt câu (+ vài giây) |
+| Cách chạy | Trình duyệt truyền âm thanh liên tục tới **OpenAI Realtime** qua WebRTC. "Độ trễ phụ đề": **Nhanh nhất / Cân bằng** = `gpt-realtime-whisper` (`delay` minimal/low, `turn_detection: null` — chữ ra trong lúc nói; trình duyệt gửi `input_audio_buffer.commit` khi phát hiện ngắt hơi hoặc tối đa 12 s); **Chính xác theo câu** = `gpt-live-transcribe` (server VAD 350 ms, `languages` + `keywords`). Tự lùi: whisper → live-transcribe → `gpt-4o-transcribe` | Cắt câu trong trình duyệt → gửi từng câu lên máy chủ |
+| Chữ hiện | **Ngay khi đang nói** (Nhanh nhất/Cân bằng); bản dịch có khi câu được chốt (ngắt hơi hoặc ≤ 12 s). Nếu OpenAI không gửi "completed", phần chữ đã nhận được lưu sau 7 s không đổi (không mất chữ) | Sau khi dứt câu (+ vài giây) |
 | Tách người nói (âm thanh cuộc họp) | Dùng nhãn `speaker` nếu OpenAI gửi sự kiện `transcription.segment`; không có thì để trống | Có, bằng mẫu giọng (≤ 4 người đã biết) |
 | Bảo mật | Máy chủ cấp **client secret tạm thời** (hết hạn 10 phút) — API key không rời máy chủ; âm thanh đi thẳng trình duyệt → OpenAI | Âm thanh đi qua máy chủ Memo Hub |
 | MOCK (không có OpenAI key) | Không hỗ trợ → tự chuyển sang "Theo câu" | Có |
@@ -68,6 +68,9 @@ Máy chủ
 
 Chọn trên màn hình thu âm: **Tắt / Tiêu chuẩn (mặc định) / Mạnh**. Áp dụng cho **mọi nguồn** (micro và âm
 thanh cuộc họp) ngay trong trình duyệt, *trước* khi nhận dạng — cả chế độ chữ chạy lẫn theo câu:
+
+Cổng ồn chạy cho **micro** ở mức Tiêu chuẩn; với **âm thanh cuộc họp / tab** chỉ chạy ở mức Mạnh (Teams, Zoom,
+YouTube đã tự lọc ồn — chặn thêm có thể nuốt chữ khi nói nhỏ hoặc có nhạc nền).
 
 1. Lọc thông cao 90 Hz: tiếng ù của quạt, điều hòa, rung bàn.
 2. Lọc thông thấp 7,5 kHz: tiếng xì (giọng nói nằm chủ yếu dưới ~7 kHz).

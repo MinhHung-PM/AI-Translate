@@ -86,6 +86,7 @@ export function AudioCapturePanel({
   // Streaming captions: words appear while speaking (OpenAI Realtime). Off = one request per sentence.
   const [streamingWanted, setStreamingWanted] = useState(true);
   const [noise, setNoise] = useState<NoiseLevel>("standard");
+  const [latency, setLatency] = useState<"fast" | "balanced" | "accurate">("balanced");
   const [gates, setGates] = useState<Record<string, boolean>>({});
   const [interim, setInterim] = useState<Record<string, string>>({});
   const [conn, setConn] = useState<Record<string, CaptionState>>({});
@@ -313,6 +314,7 @@ export function AudioCapturePanel({
         languages: langs,
         mode: streamingWanted ? "streaming" : "chunked",
         noise_suppression: noise,
+        caption_latency: latency,
         consent_confirmed: consent,
       });
       const sid = res.session.id;
@@ -321,7 +323,7 @@ export function AudioCapturePanel({
       const t0 = performance.now();
       for (const p of picked) {
         const raw = p.stream ?? (await openMicrophone(p.deviceId!, noise !== "off"));
-        const cleaned = await denoise(raw, noise);
+        const cleaned = await denoise(raw, noise, p.kind === "microphone" ? "microphone" : "other");
         cleaners.current.set(p.id, cleaned);
         const stream = cleaned.stream;
         queues.current.set(p.id, []);
@@ -329,7 +331,8 @@ export function AudioCapturePanel({
         counters.current.set(p.id, { level: 0, queued: 0, sent: 0, errors: 0, echoes: 0, lastError: null });
         // In streaming mode the local segmenter only drives the level meter.
         const cap = new SourceCapture(stream, (u) => {
-          if (streaming) return;
+          // Streaming: the local sentence detector only tells OpenAI where an utterance ends.
+          if (streaming) return realtime.current.get(p.id)?.commit();
           queues.current.get(p.id)?.push(u);
           void pump(sid, p.id);
         });
@@ -508,6 +511,27 @@ export function AudioCapturePanel({
             <div className="flex flex-col items-start gap-2">
               <Checkbox label={t.audio.streaming} checked={streamingWanted} onChange={(e) => setStreamingWanted(e.target.checked)} data-testid="audio-streaming" />
               <p className="-mt-1 ml-6 text-xs text-muted">{streamingWanted ? t.audio.streamingHint : t.audio.chunkedHint}</p>
+              {streamingWanted && (
+                <div className="ml-6 flex flex-wrap items-center gap-2" role="radiogroup" aria-label={t.audio.latency.title} data-testid="caption-latency">
+                  <span className="text-xs font-bold">{t.audio.latency.title}:</span>
+                  {(["fast", "balanced", "accurate"] as const).map((lv) => (
+                    <button
+                      key={lv}
+                      type="button"
+                      role="radio"
+                      aria-checked={latency === lv}
+                      onClick={() => setLatency(lv)}
+                      className={
+                        "rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition-colors " +
+                        (latency === lv ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
+                      }
+                    >
+                      {t.audio.latency[lv]}
+                    </button>
+                  ))}
+                  <span className="w-full text-xs text-muted">{t.audio.latency.hint[latency]}</span>
+                </div>
+              )}
               <Checkbox label={t.audio.translate} checked={translate} onChange={(e) => setTranslate(e.target.checked)} />
               <Checkbox label={t.audio.consent} checked={consent} onChange={(e) => setConsent(e.target.checked)} data-testid="audio-consent" />
             </div>

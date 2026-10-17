@@ -87,7 +87,8 @@ class Settings(BaseSettings):
     stt_text_model: str = "gpt-transcribe"  # single speaker: supports languages[] + keywords[]
     stt_text_fallback_model: str = "gpt-4o-transcribe"
     # Streaming captions (OpenAI Realtime transcription over WebRTC).
-    stt_realtime_model: str = "gpt-live-transcribe"
+    stt_realtime_model: str = "gpt-live-transcribe"  # VAD-based ("accurate" latency mode)
+    stt_realtime_streaming_model: str = "gpt-realtime-whisper"  # words while speaking ("fast"/"balanced")
     stt_realtime_fallback_model: str = "gpt-4o-transcribe"
     stt_realtime_token_ttl_seconds: int = 600
     # Chunks quieter than this RMS (0..1) are not sent: near-silence makes STT models hallucinate.

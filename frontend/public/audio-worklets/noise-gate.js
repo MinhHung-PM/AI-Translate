@@ -11,6 +11,7 @@ const PRESETS = {
 
 class NoiseGateCore {
   constructor(sampleRate, preset) {
+    this.bypass = preset === "bypass"; // filters only, no gating (meeting/tab audio in standard mode)
     const p = PRESETS[preset] || PRESETS.standard;
     this.p = p;
     this.rate = sampleRate;
@@ -38,6 +39,10 @@ class NoiseGateCore {
     if (this.levels.length > this.window) this.levels.shift();
     if (this.levels.length >= 20) this.noise = Math.min.apply(null, this.levels);
 
+    if (this.bypass) {
+      this.open = level > this.threshold;
+      return level;
+    }
     if (level > this.threshold) {
       this.open = true;
       this.holdLeft = this.holdSamples;

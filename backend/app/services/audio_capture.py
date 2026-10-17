@@ -68,6 +68,9 @@ class AudioSessionIn(BaseModel):
     mode: Literal["streaming", "chunked"] = "streaming"
     # Browser-side noise suppression level (also drives OpenAI's input noise reduction in streaming mode).
     noise_suppression: Literal["off", "standard", "strong"] = "standard"
+    # Streaming captions: fast/balanced = words while speaking (gpt-realtime-whisper, delay minimal/low);
+    # accurate = per-sentence VAD model.
+    caption_latency: Literal["fast", "balanced", "accurate"] = "balanced"
     consent_confirmed: bool
 
 
@@ -212,6 +215,7 @@ def start_session(
             # Streaming needs a real provider; the MOCK only supports chunked mode.
             "mode": "chunked" if stt.is_mock else body.mode,
             "noise_suppression": body.noise_suppression,
+            "caption_latency": body.caption_latency,
             "stt_model": stt.model,
             "consent_confirmed_at": utcnow().isoformat(),
         },
@@ -594,8 +598,17 @@ def realtime_token(
             noise_reduction=None
             if config.get("noise_suppression") == "off"
             else ("near_field" if source.get("kind") == "microphone" else "far_field"),
-            model=settings.stt_realtime_model,
-            fallback_model=settings.stt_realtime_fallback_model,
+            models=(
+                [settings.stt_realtime_model, settings.stt_realtime_fallback_model]
+                if config.get("caption_latency") == "accurate"
+                else [
+                    settings.stt_realtime_streaming_model,
+                    settings.stt_realtime_model,
+                    settings.stt_realtime_fallback_model,
+                ]
+            ),
+            live_model=settings.stt_realtime_model,
+            delay="minimal" if config.get("caption_latency") == "fast" else "low",
             ttl_seconds=settings.stt_realtime_token_ttl_seconds,
             timeout_s=settings.stt_timeout_seconds,
         )

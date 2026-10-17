@@ -29,13 +29,29 @@ class RealtimeToken:
     value: str
     expires_at: int
     model: str
+    # True when the session has no server VAD: the browser must send
+    # input_audio_buffer.commit at the end of each utterance.
+    client_commits: bool
+
+
+WHISPER = "gpt-realtime-whisper"  # true streaming: no VAD, text emitted while speaking ("delay")
 
 
 def _session(
-    model: str, languages: list[str], keywords: list[str], noise_reduction: str | None, live_model: str
+    model: str,
+    languages: list[str],
+    keywords: list[str],
+    noise_reduction: str | None,
+    live_model: str,
+    delay: str = "low",
 ) -> dict[str, Any]:
     transcription: dict[str, Any] = {"model": model}
-    if model == live_model:
+    if model == WHISPER:
+        # Per spec: prompt is not supported, turn_detection must be null, "delay" trades latency/accuracy.
+        if len(languages) == 1:
+            transcription["language"] = languages[0]
+        transcription["delay"] = delay
+    elif model == live_model:
         if languages:
             transcription["languages"] = languages
         if keywords:
@@ -52,11 +68,13 @@ def _session(
                 "transcription": transcription,
                 # null turns OpenAI's input noise reduction off (spec: RealtimeTranscriptionSessionCreateRequestGA).
                 "noise_reduction": {"type": noise_reduction} if noise_reduction else None,
-                "turn_detection": {
+                "turn_detection": None
+                if model == WHISPER
+                else {
                     "type": "server_vad",
                     "threshold": 0.5,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
+                    "silence_duration_ms": 350,
                 },
             }
         },
@@ -69,19 +87,23 @@ def create_transcription_token(
     languages: list[str],
     keywords: list[str],
     noise_reduction: str | None,
-    model: str,
-    fallback_model: str,
+    models: list[str],
+    live_model: str,
+    delay: str,
     ttl_seconds: int,
     timeout_s: float,
 ) -> RealtimeToken:
+    """Tries ``models`` in order (e.g. whisper → live-transcribe → gpt-4o-transcribe),
+    falling back when the account cannot use one."""
     if not creds.api_key:
         raise ProviderError(ProviderErrorCode.not_configured, "An OpenAI API key is required for live captions")
     base = (creds.base_url or "https://api.openai.com/v1").rstrip("/")
     last: httpx.Response | None = None
-    for candidate in (model, fallback_model):
+    candidates = list(dict.fromkeys(models))
+    for idx, candidate in enumerate(candidates):
         body = {
             "expires_after": {"anchor": "created_at", "seconds": ttl_seconds},
-            "session": _session(candidate, languages, keywords, noise_reduction, model),
+            "session": _session(candidate, languages, keywords, noise_reduction, live_model, delay),
         }
         try:
             with httpx.Client(
@@ -100,9 +122,15 @@ def create_transcription_token(
             value = data.get("value") or (data.get("client_secret") or {}).get("value")
             if not isinstance(value, str) or not value:
                 raise ProviderError(ProviderErrorCode.invalid_output, "OpenAI returned no client secret")
-            return RealtimeToken(value=value, expires_at=int(data.get("expires_at") or 0), model=candidate)
+            return RealtimeToken(
+                value=value,
+                expires_at=int(data.get("expires_at") or 0),
+                model=candidate,
+                client_commits=candidate == WHISPER,
+            )
         last = resp
-        if resp.status_code in (400, 404) and candidate == model and "model" in resp.text.lower():
+        more = idx < len(candidates) - 1
+        if resp.status_code in (400, 404) and more and any(w in resp.text.lower() for w in ("model", "delay", "turn")):
             logger.info("realtime.model_unavailable", extra={"model": candidate})
             continue
         break
