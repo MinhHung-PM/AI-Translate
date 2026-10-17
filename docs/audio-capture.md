@@ -64,6 +64,25 @@ Máy chủ
 * Nhãn ngôn ngữ của mỗi câu là ngôn ngữ model thực sự nhận ra (không gán theo mặc định của cuộc họp).
 * Ghi chú "Lưu ý mơ hồ" của bản dịch luôn viết bằng tiếng Việt.
 
+### Lọc tạp âm tự động
+
+Chọn trên màn hình thu âm: **Tắt / Tiêu chuẩn (mặc định) / Mạnh**. Áp dụng cho **mọi nguồn** (micro và âm
+thanh cuộc họp) ngay trong trình duyệt, *trước* khi nhận dạng — cả chế độ chữ chạy lẫn theo câu:
+
+1. Lọc thông cao 90 Hz: tiếng ù của quạt, điều hòa, rung bàn.
+2. Lọc thông thấp 7,5 kHz: tiếng xì (giọng nói nằm chủ yếu dưới ~7 kHz).
+3. **Cổng ồn thích ứng** (`public/audio-worklets/noise-gate.js`): tự học mức ồn nền (mức thấp nhất trong ~3 s)
+   và hạ nhỏ âm thanh nằm sát mức đó — Tiêu chuẩn ≈ −18 dB, Mạnh ≈ −30 dB — với attack nhanh/hold/release
+   mượt để không cắt đầu/cuối từ. Trên màn hình: "🎙 đang nghe giọng nói" / "🔇 đang chặn tạp âm".
+4. Micro: bật thêm bộ lọc ồn của trình duyệt (`noiseSuppression`), luôn bật khử vọng.
+5. Chế độ chữ chạy: bật `noise_reduction` của OpenAI (`near_field` cho micro, `far_field` cho âm thanh cuộc
+   họp); "Tắt" gửi `null`.
+
+Kiểm thử: `noise-gate.test.ts` chạy chính file worklet — tạp âm nền giảm > 10 dB sau khi thích nghi, giọng nói
+giữ nguyên mức (sai lệch < 0,5 dB), mức Mạnh chặn sâu hơn, không cắt 30 ms đầu của từ. Chưa đo trên phòng họp
+thật. Cổng ồn giảm tạp âm *giữa* các câu; tạp âm lẫn *cùng lúc* với giọng nói chỉ được giảm một phần (bộ lọc
+tần số, bộ lọc của trình duyệt và OpenAI).
+
 ### Chống trùng câu khi nhiều nguồn cùng thu một âm thanh
 
 Khi chọn cả âm thanh cuộc họp và micro (micro nghe được loa), Stereo Mix, hoặc cùng một tab hai lần, cùng

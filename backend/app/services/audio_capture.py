@@ -66,6 +66,8 @@ class AudioSessionIn(BaseModel):
     # streaming = words appear while speaking (OpenAI Realtime over WebRTC);
     # chunked = one request per utterance (supports voice-reference speaker tracking).
     mode: Literal["streaming", "chunked"] = "streaming"
+    # Browser-side noise suppression level (also drives OpenAI's input noise reduction in streaming mode).
+    noise_suppression: Literal["off", "standard", "strong"] = "standard"
     consent_confirmed: bool
 
 
@@ -209,6 +211,7 @@ def start_session(
             "languages": languages or ["ja", "vi", "en"],
             # Streaming needs a real provider; the MOCK only supports chunked mode.
             "mode": "chunked" if stt.is_mock else body.mode,
+            "noise_suppression": body.noise_suppression,
             "stt_model": stt.model,
             "consent_confirmed_at": utcnow().isoformat(),
         },
@@ -588,7 +591,9 @@ def realtime_token(
             creds,
             languages=list(config.get("languages") or []),
             keywords=_keywords(db, meeting),
-            far_field=source.get("kind") != "microphone",
+            noise_reduction=None
+            if config.get("noise_suppression") == "off"
+            else ("near_field" if source.get("kind") == "microphone" else "far_field"),
             model=settings.stt_realtime_model,
             fallback_model=settings.stt_realtime_fallback_model,
             ttl_seconds=settings.stt_realtime_token_ttl_seconds,

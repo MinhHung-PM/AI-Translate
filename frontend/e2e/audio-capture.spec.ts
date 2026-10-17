@@ -67,8 +67,12 @@ test("Capture microphone audio → recognised, speaker-labelled and translated l
   const firstMic = tid(page, "mic-list").getByRole("checkbox").first();
   await firstMic.check();
   await expect(tid(page, "picked-sources")).toContainText("MIC");
+  // Automatic noise suppression is on by default ("Tiêu chuẩn"); the audio below reaches
+  // recognition through the filter chain (high-pass → low-pass → adaptive noise gate).
+  await expect(tid(page, "noise-level").getByRole("radio", { checked: true })).toContainText("Tiêu chuẩn");
   await tid(page, "audio-consent").check();
   await tid(page, "start-audio").click();
+  await expect(tid(page, "audio-sources-live")).toContainText(/đang nghe giọng nói|đang chặn tạp âm/, { timeout: 15_000 });
 
   await expect(tid(page, "audio-sources-live")).toBeVisible();
   await expect(tid(page, "audio-banner")).toContainText("MOCK");

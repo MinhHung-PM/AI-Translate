@@ -81,9 +81,11 @@ export async function unlockDeviceLabels(): Promise<void> {
   s.getTracks().forEach((t) => t.stop());
 }
 
-export function openMicrophone(deviceId: string): Promise<MediaStream> {
+export function openMicrophone(deviceId: string, noiseSuppression = true): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
-    audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    // Browser processing: echo cancellation always (avoids re-capturing the speakers); its noise suppressor
+    // follows the "Lọc tạp âm" setting and is complemented by our own chain (lib/audio/denoise.ts).
+    audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression, autoGainControl: true },
   });
 }
 

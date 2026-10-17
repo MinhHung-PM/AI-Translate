@@ -31,7 +31,9 @@ class RealtimeToken:
     model: str
 
 
-def _session(model: str, languages: list[str], keywords: list[str], far_field: bool, live_model: str) -> dict[str, Any]:
+def _session(
+    model: str, languages: list[str], keywords: list[str], noise_reduction: str | None, live_model: str
+) -> dict[str, Any]:
     transcription: dict[str, Any] = {"model": model}
     if model == live_model:
         if languages:
@@ -48,7 +50,8 @@ def _session(model: str, languages: list[str], keywords: list[str], far_field: b
         "audio": {
             "input": {
                 "transcription": transcription,
-                "noise_reduction": {"type": "far_field" if far_field else "near_field"},
+                # null turns OpenAI's input noise reduction off (spec: RealtimeTranscriptionSessionCreateRequestGA).
+                "noise_reduction": {"type": noise_reduction} if noise_reduction else None,
                 "turn_detection": {
                     "type": "server_vad",
                     "threshold": 0.5,
@@ -65,7 +68,7 @@ def create_transcription_token(
     *,
     languages: list[str],
     keywords: list[str],
-    far_field: bool,
+    noise_reduction: str | None,
     model: str,
     fallback_model: str,
     ttl_seconds: int,
@@ -78,7 +81,7 @@ def create_transcription_token(
     for candidate in (model, fallback_model):
         body = {
             "expires_after": {"anchor": "created_at", "seconds": ttl_seconds},
-            "session": _session(candidate, languages, keywords, far_field, model),
+            "session": _session(candidate, languages, keywords, noise_reduction, model),
         }
         try:
             with httpx.Client(

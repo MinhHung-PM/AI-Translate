@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Card, Checkbox, Input } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { RealtimeCaptionSource, type CaptionState, type RealtimeToken } from "@/lib/audio/realtime";
 import type { FinalUtterance } from "@/lib/audio/realtime-events";
+import { denoise, type DenoisedSource, type NoiseLevel } from "@/lib/audio/denoise";
 import { SourceCapture, listMicrophones, openDisplayAudio, openMicrophone, unlockDeviceLabels, type SourceKind } from "@/lib/audio/capture";
 import type { Utterance } from "@/lib/audio/segmenter";
 import { encodeWav } from "@/lib/audio/wav";
@@ -84,6 +85,8 @@ export function AudioCapturePanel({
   const [note, setNote] = useState<string | null>(null);
   // Streaming captions: words appear while speaking (OpenAI Realtime). Off = one request per sentence.
   const [streamingWanted, setStreamingWanted] = useState(true);
+  const [noise, setNoise] = useState<NoiseLevel>("standard");
+  const [gates, setGates] = useState<Record<string, boolean>>({});
   const [interim, setInterim] = useState<Record<string, string>>({});
   const [conn, setConn] = useState<Record<string, CaptionState>>({});
 
@@ -93,6 +96,7 @@ export function AudioCapturePanel({
   const pumping = useRef(new Set<string>());
   const counters = useRef(new Map<string, SourceStats>());
   const realtime = useRef(new Map<string, RealtimeCaptionSource>());
+  const cleaners = useRef(new Map<string, DenoisedSource>());
   const finals = useRef(new Map<string, Promise<void>>());
 
   // Client-only capability check (server snapshot is optimistic to avoid a hydration mismatch).
@@ -109,6 +113,9 @@ export function AudioCapturePanel({
         next[id] = { ...c, level: captures.current.get(id)?.level ?? 0, queued: queues.current.get(id)?.length ?? 0 };
       }
       setStats(next);
+      const g: Record<string, boolean> = {};
+      for (const [id, d] of cleaners.current) g[id] = d.gateOpen();
+      setGates(g);
     }, 250);
     return () => clearInterval(timer);
   }, [running]);
@@ -135,11 +142,14 @@ export function AudioCapturePanel({
     window.addEventListener("beforeunload", warn);
     const caps = captures.current;
     const rts = realtime.current;
+    const cls = cleaners.current;
     const sid = sessionId;
     return () => {
       window.removeEventListener("beforeunload", warn);
       rts.forEach((r) => r.stop());
       rts.clear();
+      cls.forEach((d) => void d.close());
+      cls.clear();
       if (caps.size) {
         caps.forEach((c) => void c.stop());
         caps.clear();
@@ -302,6 +312,7 @@ export function AudioCapturePanel({
         translate,
         languages: langs,
         mode: streamingWanted ? "streaming" : "chunked",
+        noise_suppression: noise,
         consent_confirmed: consent,
       });
       const sid = res.session.id;
@@ -309,7 +320,10 @@ export function AudioCapturePanel({
       if (streamingWanted && !streaming) setNote(t.audio.streamingUnavailable);
       const t0 = performance.now();
       for (const p of picked) {
-        const stream = p.stream ?? (await openMicrophone(p.deviceId!));
+        const raw = p.stream ?? (await openMicrophone(p.deviceId!, noise !== "off"));
+        const cleaned = await denoise(raw, noise);
+        cleaners.current.set(p.id, cleaned);
+        const stream = cleaned.stream;
         queues.current.set(p.id, []);
         seqs.current.set(p.id, 0);
         counters.current.set(p.id, { level: 0, queued: 0, sent: 0, errors: 0, echoes: 0, lastError: null });
@@ -331,6 +345,8 @@ export function AudioCapturePanel({
       realtime.current.clear();
       captures.current.forEach((c) => void c.stop());
       captures.current.clear();
+      cleaners.current.forEach((d) => void d.close());
+      cleaners.current.clear();
       setError(mediaError(err));
     } finally {
       setBusy(false);
@@ -350,6 +366,8 @@ export function AudioCapturePanel({
       picked.forEach((p) => onInterim?.(p.id, p.label, ""));
       await Promise.all([...captures.current.values()].map((c) => c.stop()));
       captures.current.clear();
+      await Promise.all([...cleaners.current.values()].map((d) => d.close()));
+      cleaners.current.clear();
       for (const id of queues.current.keys()) void pump(sid, id);
       for (let i = 0; i < 120 && (pumping.current.size || [...queues.current.values()].some((q) => q.length)); i++) await sleep(250);
       const res = await api.post<AudioSession>(`/audio-sessions/${sid}/stop`);
@@ -465,7 +483,29 @@ export function AudioCapturePanel({
               <p className="mt-1 text-xs text-muted">{t.audio.languagesHint}</p>
             </section>
 
-            <div className="space-y-2">
+            <section>
+              <h3 className="mb-1 font-medium">{t.audio.noise.title}</h3>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.audio.noise.title} data-testid="noise-level">
+                {(["off", "standard", "strong"] as NoiseLevel[]).map((lv) => (
+                  <button
+                    key={lv}
+                    type="button"
+                    role="radio"
+                    aria-checked={noise === lv}
+                    onClick={() => setNoise(lv)}
+                    className={
+                      "rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition-colors " +
+                      (noise === lv ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
+                    }
+                  >
+                    {t.audio.noise[lv]}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-muted">{t.audio.noise.hint[noise]}</p>
+            </section>
+
+            <div className="flex flex-col items-start gap-2">
               <Checkbox label={t.audio.streaming} checked={streamingWanted} onChange={(e) => setStreamingWanted(e.target.checked)} data-testid="audio-streaming" />
               <p className="-mt-1 ml-6 text-xs text-muted">{streamingWanted ? t.audio.streamingHint : t.audio.chunkedHint}</p>
               <Checkbox label={t.audio.translate} checked={translate} onChange={(e) => setTranslate(e.target.checked)} />
@@ -493,6 +533,11 @@ export function AudioCapturePanel({
                       {s?.errors ? ` · ${t.audio.errors}: ${s.errors}` : ""}
                       {s?.echoes ? ` · ${t.audio.echoes}: ${s.echoes}` : ""}
                     </span>
+                    {noise !== "off" && (
+                      <Badge tone={gates[p.id] ? "success" : "neutral"} title={t.audio.noise.title}>
+                        {gates[p.id] ? t.audio.noise.passing : t.audio.noise.blocking}
+                      </Badge>
+                    )}
                     {conn[p.id] && <Badge tone={conn[p.id] === "connected" ? "success" : conn[p.id] === "failed" ? "danger" : "warning"}>{t.audio.conn[conn[p.id]]}</Badge>}
                     {s?.lastError && <span className="text-xs text-red-700">{s.lastError}</span>}
                   </li>

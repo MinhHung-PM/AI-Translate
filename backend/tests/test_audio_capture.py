@@ -599,3 +599,25 @@ def test_same_speech_captured_by_two_sources_is_stored_once(pm, realtime):
     assert len(pm.post(f"/audio-sessions/{sid}/segments", json=yes2).json()["entries"]) == 1
     feed = pm.get(f"/meetings/{meeting['id']}/live").json()["entries"]
     assert len(feed) == 6
+
+
+def test_noise_suppression_setting_drives_openai_noise_reduction(pm, realtime):
+    meeting = create_meeting(pm)
+    sid = start(pm, meeting["id"], noise_suppression="off")["session"]["id"]
+    s = pm.get(f"/audio-sessions/{sid}").json()["session"]
+    assert s["capture_config"]["noise_suppression"] == "off"
+    pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"})
+    assert realtime.bodies[-1]["session"]["audio"]["input"]["noise_reduction"] is None
+    pm.post(f"/audio-sessions/{sid}/stop")
+    sid2 = start(pm, meeting["id"], noise_suppression="strong")["session"]["id"]
+    pm.post(f"/audio-sessions/{sid2}/realtime-token", json={"source_id": "meeting"})
+    assert realtime.bodies[-1]["session"]["audio"]["input"]["noise_reduction"] == {"type": "far_field"}
+    bad = pm.post(
+        f"/meetings/{meeting['id']}/audio-sessions",
+        json={
+            "sources": [{"id": "a", "kind": "system", "label": "x"}],
+            "consent_confirmed": True,
+            "noise_suppression": "max",
+        },
+    )
+    assert bad.status_code == 422
