@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AudioCapturePanel } from "@/components/audio/AudioCapturePanel";
+import { LiveCaptionFeed, type InterimCaption } from "@/components/audio/LiveCaptionFeed";
 import { Alert, Badge, Button, Card, Checkbox, EmptyState, Field, Input, ProgressBar, Spinner, Tabs, Textarea } from "@/components/ui";
 import { MeetingHeader } from "@/components/meeting/meeting-header";
 import { TranscriptTable } from "@/components/meeting/transcript-table";
@@ -43,6 +44,8 @@ export default function LivePage() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"audio" | "replay">("audio");
   const [refresh, setRefresh] = useState(0);
+  const [interim, setInterim] = useState<Record<string, InterimCaption>>({});
+  const [view, setView] = useState<"bubbles" | "table">("bubbles");
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const running = feed?.session?.status === "running";
@@ -193,6 +196,14 @@ export default function LivePage() {
           session={feed?.session ?? null}
           defaultLanguages={[...new Set([meeting.source_language, meeting.target_language].filter((x): x is Language => !!x))]}
           onChanged={() => setRefresh((n) => n + 1)}
+          onInterim={(sourceId, label, text) =>
+            setInterim((prev) => {
+              const next = { ...prev };
+              if (text) next[sourceId] = { sourceId, label, text };
+              else delete next[sourceId];
+              return next;
+            })
+          }
         />}
 
       {canStart && !audioMode && (
@@ -260,7 +271,24 @@ export default function LivePage() {
               {feed.session.status_message}
             </p>
           )}
-          {feed.entries.length === 0 ? (
+          {isAudio && (
+            <Tabs
+              value={view}
+              onChange={setView}
+              items={[
+                { value: "bubbles", label: t.captions.bubbles },
+                { value: "table", label: t.captions.table },
+              ]}
+            />
+          )}
+          {isAudio && view === "bubbles" ? (
+            <LiveCaptionFeed
+              entries={feed.entries}
+              target={meeting.target_language}
+              interim={active ? Object.values(interim) : []}
+              selfLabels={(feed.session.capture_config?.sources ?? []).filter((s) => s.kind === "microphone").map((s) => s.label)}
+            />
+          ) : feed.entries.length === 0 ? (
             <EmptyState title={t.live.waiting} />
           ) : (
             <TranscriptTable entries={feed.entries} target={meeting.target_language} editable={false} />

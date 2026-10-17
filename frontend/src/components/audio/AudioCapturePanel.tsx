@@ -60,11 +60,14 @@ export function AudioCapturePanel({
   session,
   defaultLanguages,
   onChanged,
+  onInterim,
 }: {
   meetingId: string;
   session: LiveSession | null;
   defaultLanguages: Language[];
   onChanged: () => void;
+  /** When given, words being spoken are reported to the parent (shown in the caption feed) instead of here. */
+  onInterim?: (sourceId: string, label: string, text: string) => void;
 }) {
   const [mics, setMics] = useState<MediaDeviceInfo[] | null>(null);
   const [picked, setPicked] = useState<PickedSource[]>([]);
@@ -265,7 +268,10 @@ export function AudioCapturePanel({
       stream,
       getToken,
       {
-        onInterim: (_itemId, text) => setInterim((prev) => ({ ...prev, [p.id]: text })),
+        onInterim: (_itemId, text) => {
+          setInterim((prev) => ({ ...prev, [p.id]: text }));
+          onInterim?.(p.id, p.label, text);
+        },
         onFinal: (u) => postFinal(sid, p.id, u, rt?.model ?? ""),
         onError: (msg) => {
           const c = counters.current.get(p.id);
@@ -338,6 +344,7 @@ export function AudioCapturePanel({
       await Promise.race([Promise.all([...finals.current.values()]), sleep(15000)]);
       finals.current.clear();
       setInterim({});
+      picked.forEach((p) => onInterim?.(p.id, p.label, ""));
       await Promise.all([...captures.current.values()].map((c) => c.stop()));
       captures.current.clear();
       for (const id of queues.current.keys()) void pump(sid, id);
@@ -488,7 +495,7 @@ export function AudioCapturePanel({
                 );
               })}
             </ul>
-            {Object.values(interim).some(Boolean) && (
+            {!onInterim && Object.values(interim).some(Boolean) && (
               <div className="rounded-md border border-sky-200 bg-sky-50 p-3" data-testid="interim-captions" aria-live="polite">
                 <p className="mb-1 text-xs font-medium text-sky-900">{t.audio.speakingNow}</p>
                 {picked

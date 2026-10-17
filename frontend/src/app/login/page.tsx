@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Field, Select } from "@/components/ui";
+import { Shuriken, Alert, Button, Card, Field, Select } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { errorMessage } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -52,8 +52,13 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <h1 className="mb-1 text-lg font-semibold text-brand-700">{t.app.name}</h1>
-        <p className="mb-4 text-sm text-muted">{t.login.subtitle}</p>
+        <div className="mb-5 flex items-center gap-3">
+          <Shuriken className="size-14 text-brand-500" spin />
+          <div>
+            <h1 className="text-2xl leading-tight font-black tracking-tight text-ink">{t.app.name}</h1>
+            <p className="text-sm font-semibold text-muted">{t.login.subtitle}</p>
+          </div>
+        </div>
         <Card title={t.login.title}>
           {mode === "dev" && devUsers && (
             <form

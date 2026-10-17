@@ -2,7 +2,7 @@ import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type Selec
 import { cn } from "./cn";
 
 const control =
-  "w-full rounded-md border border-line bg-white px-2.5 py-1.5 text-sm text-ink placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-gray-50 disabled:text-muted";
+  "w-full rounded-lg border-2 border-ink/25 bg-white px-2.5 py-1.5 text-sm text-ink placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-100 disabled:bg-gray-50 disabled:text-muted";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...props }, ref) {
   return <input ref={ref} className={cn(control, "h-9", className)} {...props} />;
@@ -39,7 +39,7 @@ export function Field({ label, hint, error, children, className }: FieldProps) {
   const id = useId();
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <label htmlFor={id} className="text-xs font-medium text-gray-700">
+      <label htmlFor={id} className="text-xs font-bold text-ink">
         {label}
       </label>
       {children(id)}

@@ -73,9 +73,14 @@ test("Capture microphone audio → recognised, speaker-labelled and translated l
   await expect(tid(page, "audio-sources-live")).toBeVisible();
   await expect(tid(page, "audio-banner")).toContainText("MOCK");
   // Utterances are detected in the browser, recognised (mock) and translated.
-  await expect(tid(page, "transcript-table")).toContainText("[MOCK STT]", { timeout: 30_000 });
-  await expect(tid(page, "transcript-table")).toContainText("Tôi");
-  await expect(tid(page, "transcript-table")).toContainText("[MOCK", { timeout: 30_000 });
+  // Manga speech bubbles: original line, speaker, and translation headline.
+  await expect(tid(page, "caption-feed")).toContainText("[MOCK STT]", { timeout: 30_000 });
+  await expect(tid(page, "caption-bubble").first()).toContainText("Tôi");
+  await expect(tid(page, "caption-bubble").first()).toContainText("[MOCK", { timeout: 30_000 });
+  // The bilingual table view is still available.
+  await page.getByRole("tab", { name: "Bảng song ngữ" }).click();
+  await expect(tid(page, "transcript-table")).toContainText("[MOCK STT]");
+  await page.getByRole("tab", { name: "Bong bóng hội thoại" }).click();
 
   await tid(page, "stop-audio").click();
   await expect(tid(page, "replay-status")).toHaveText("stopped", { timeout: 30_000 });

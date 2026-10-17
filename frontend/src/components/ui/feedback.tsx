@@ -9,12 +9,12 @@ const tones: Record<Tone, string> = {
   success: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   warning: "bg-amber-50 text-amber-800 ring-amber-200",
   danger: "bg-red-50 text-red-700 ring-red-200",
-  brand: "bg-brand-50 text-brand-700 ring-brand-100",
+  brand: "bg-brand-100 text-brand-700 ring-brand-500/40",
 };
 
 export function Badge({ tone = "neutral", children, className, title }: { tone?: Tone; children: ReactNode; className?: string; title?: string }) {
   return (
-    <span title={title} className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ring-1 ring-inset", tones[tone], className)}>
+    <span title={title} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold whitespace-nowrap ring-1 ring-inset", tones[tone], className)}>
       {children}
     </span>
   );
@@ -22,7 +22,7 @@ export function Badge({ tone = "neutral", children, className, title }: { tone?:
 
 export function Alert({ tone = "info", title, children, className }: { tone?: Tone; title?: string; children?: ReactNode; className?: string }) {
   return (
-    <div role={tone === "danger" ? "alert" : "status"} className={cn("rounded-md px-3 py-2 text-sm ring-1 ring-inset", tones[tone], className)}>
+    <div role={tone === "danger" ? "alert" : "status"} className={cn("rounded-lg border-l-4 border-current/40 px-3 py-2 text-sm ring-1 ring-inset", tones[tone], className)}>
       {title && <p className="font-medium">{title}</p>}
       {children && <div className={cn(title && "mt-0.5")}>{children}</div>}
     </div>

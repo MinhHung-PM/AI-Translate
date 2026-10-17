@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { BarChart3, ClipboardList, FolderKanban, History, LayoutDashboard, LogOut, PlusCircle,
   Mic, Plug, Settings, Shield } from "lucide-react";
-import { Spinner, cn } from "@/components/ui";
+import { Shuriken, Spinner, SwirlCloud, cn } from "@/components/ui";
 import { t } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 
@@ -45,10 +45,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2">
         Bỏ qua điều hướng
       </a>
-      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-line bg-white md:flex">
-        <div className="border-b border-line px-4 py-3">
-          <p className="text-sm font-semibold text-brand-700">{t.app.short}</p>
-          <p className="text-[11px] text-muted">AI Meeting Translator</p>
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r-4 border-brand-500 bg-navy-800 text-white md:flex">
+        <div className="group flex items-center gap-2.5 border-b-2 border-white/10 px-4 py-4">
+          <Shuriken className="size-9 text-brand-500 transition-transform duration-700 group-hover:rotate-180" />
+          <div>
+            <p className="text-base leading-tight font-black tracking-tight">{t.app.short}</p>
+            <p className="text-[11px] font-semibold text-brand-100/80">AI Meeting Translator</p>
+          </div>
         </div>
         <nav className="flex-1 space-y-0.5 p-2" aria-label="Main">
           {items.map(({ href, label, icon: Icon }) => (
@@ -57,8 +60,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               href={href}
               aria-current={isActive(pathname, href) ? "page" : undefined}
               className={cn(
-                "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm",
-                isActive(pathname, href) ? "bg-brand-50 font-medium text-brand-700" : "text-gray-700 hover:bg-gray-100",
+                "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition-colors",
+                isActive(pathname, href)
+                  ? "border-2 border-ink bg-brand-500 text-white shadow-[2px_2px_0_0_#0b1022]"
+                  : "border-2 border-transparent text-white/80 hover:bg-white/10 hover:text-white",
               )}
             >
               <Icon className="size-4" aria-hidden />
@@ -66,21 +71,23 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="border-t border-line p-3 text-xs">
+        <SwirlCloud className="mx-auto mb-1 h-8 w-24 text-navy-700" />
+        <div className="border-t-2 border-white/10 p-3 text-xs">
           <p className="truncate font-medium" title={session.user.email}>
             {session.user.display_name}
           </p>
-          <p className="text-muted">{t.roles[session.user.role]}</p>
-          {session.auth_mode === "dev" && <p className="mt-1 font-medium text-amber-700">DEV AUTH</p>}
-          <button type="button" onClick={() => void logout()} className="mt-2 inline-flex items-center gap-1 text-muted hover:text-ink">
+          <p className="text-white/60">{t.roles[session.user.role]}</p>
+          {session.auth_mode === "dev" && <p className="mt-1 font-bold text-brand-500">DEV AUTH</p>}
+          <button type="button" onClick={() => void logout()} className="mt-2 inline-flex items-center gap-1 text-white/60 hover:text-white">
             <LogOut className="size-3.5" aria-hidden /> {t.nav.logout}
           </button>
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-2 overflow-x-auto border-b border-line bg-white px-3 py-2 md:hidden">
+        <header className="flex items-center gap-2 overflow-x-auto border-b-4 border-brand-500 bg-navy-800 px-3 py-2 md:hidden">
+          <Shuriken className="size-6 shrink-0 text-brand-500" />
           {items.map(({ href, label }) => (
-            <Link key={href} href={href} className={cn("rounded px-2 py-1 text-xs whitespace-nowrap", isActive(pathname, href) && "bg-brand-50 text-brand-700")}>
+            <Link key={href} href={href} className={cn("rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-white/80", isActive(pathname, href) && "bg-brand-500 text-white")}>
               {label}
             </Link>
           ))}

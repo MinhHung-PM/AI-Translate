@@ -1,17 +1,24 @@
 @import "tailwindcss";
 
-/* Restrained enterprise palette. Brand accent is a muted indigo-blue. */
+/* "Ninja manga" theme (anime-inspired, no copyrighted characters or symbols):
+   blazing orange accent, deep navy ink, warm scroll-paper canvas, bold comic-panel outlines. */
 @theme {
-  --color-brand-50: #eef3fb;
-  --color-brand-100: #d9e4f6;
-  --color-brand-500: #3a5f9e;
-  --color-brand-600: #2f4f86;
-  --color-brand-700: #263f6b;
-  --color-ink: #1f2937;
-  --color-muted: #6b7280;
-  --color-line: #e5e7eb;
+  --color-brand-50: #fff4e6;
+  --color-brand-100: #ffe1bf;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #b8410a;
+  --color-ink: #1b2440;
+  --color-muted: #5d6680;
+  --color-line: #e6dcc8;
   --color-surface: #ffffff;
-  --color-canvas: #f6f7f9;
+  --color-canvas: #fdf6e9;
+  --color-navy-900: #141b33;
+  --color-navy-800: #1b2440;
+  --color-navy-700: #263257;
+  --color-scroll: #f6e7c8;
+  --shadow-panel: 4px 4px 0 0 #1b2440;
+  --shadow-panel-sm: 2px 2px 0 0 #1b2440;
   /* Vietnamese-complete fonts first: Japanese UI fonts (Yu Gothic, Hiragino) lack precomposed Vietnamese
      letters (ấ, ả, ố…), which Chromium then renders as a base letter + a detached accent. They stay as
      per-glyph fallbacks for kanji and kana. */
@@ -21,14 +28,75 @@
 
 html,
 body {
-  background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  /* Manga halftone dots on warm scroll paper. */
+  background-color: var(--color-canvas);
+  background-image: radial-gradient(rgb(27 36 64 / 0.07) 1px, transparent 1.2px);
+  background-size: 14px 14px;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-brand-500);
+  outline: 3px solid var(--color-brand-500);
   outline-offset: 2px;
+}
+
+/* Comic panel: thick ink outline + offset shadow. */
+@utility panel {
+  border: 2px solid var(--color-ink);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+/* Speed-line stripe used behind headings. */
+@utility speed-lines {
+  background-image: repeating-linear-gradient(-55deg, rgb(249 115 22 / 0.18) 0 6px, transparent 6px 14px);
+}
+
+@keyframes caption-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@utility animate-caption-in {
+  animation: caption-in 0.28s ease-out both;
+}
+
+@keyframes typing-dot {
+  0%, 80%, 100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@utility typing-dot {
+  animation: typing-dot 1.2s infinite ease-in-out;
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@utility animate-spin-slow {
+  animation: spin-slow 6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-caption-in,
+  .typing-dot,
+  .animate-spin-slow {
+    animation: none;
+  }
 }
 
 .wmde-markdown {
