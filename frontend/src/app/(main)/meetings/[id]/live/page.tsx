@@ -196,10 +196,10 @@ export default function LivePage() {
           session={feed?.session ?? null}
           defaultLanguages={[...new Set([meeting.source_language, meeting.target_language].filter((x): x is Language => !!x))]}
           onChanged={() => setRefresh((n) => n + 1)}
-          onInterim={(sourceId, label, text) =>
+          onInterim={(sourceId, label, text, translation) =>
             setInterim((prev) => {
               const next = { ...prev };
-              if (text) next[sourceId] = { sourceId, label, text };
+              if (text || translation) next[sourceId] = { sourceId, label, text, translation };
               else delete next[sourceId];
               return next;
             })

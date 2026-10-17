@@ -69,7 +69,7 @@ export function AudioCapturePanel({
   defaultLanguages: Language[];
   onChanged: () => void;
   /** When given, words being spoken are reported to the parent (shown in the caption feed) instead of here. */
-  onInterim?: (sourceId: string, label: string, text: string) => void;
+  onInterim?: (sourceId: string, label: string, text: string, translation?: string) => void;
 }) {
   const [mics, setMics] = useState<MediaDeviceInfo[] | null>(null);
   const [picked, setPicked] = useState<PickedSource[]>([]);
@@ -86,9 +86,12 @@ export function AudioCapturePanel({
   // Streaming captions: words appear while speaking (OpenAI Realtime). Off = one request per sentence.
   const [streamingWanted, setStreamingWanted] = useState(true);
   const [noise, setNoise] = useState<NoiseLevel>("standard");
-  const [latency, setLatency] = useState<"fast" | "balanced" | "accurate">("balanced");
+  // interpret = OpenAI live interpretation (translated words stream in); the rest are caption modes.
+  const [latency, setLatency] = useState<"interpret" | "fast" | "balanced" | "accurate">("interpret");
+  const [playVoice, setPlayVoice] = useState(false);
+  const voices = useRef(new Map<string, HTMLAudioElement>());
   const [gates, setGates] = useState<Record<string, boolean>>({});
-  const [interim, setInterim] = useState<Record<string, string>>({});
+  const [interim, setInterim] = useState<Record<string, { text: string; translation?: string }>>({});
   const [conn, setConn] = useState<Record<string, CaptionState>>({});
 
   const captures = useRef(new Map<string, SourceCapture>());
@@ -257,6 +260,7 @@ export function AudioCapturePanel({
           duration_ms: u.durationMs,
           model: model || null,
           speaker: u.speaker,
+          translated_text: u.translation ? u.translation.slice(0, 8000) : null,
         });
         if (c) {
           c.sent += 1;
@@ -282,9 +286,9 @@ export function AudioCapturePanel({
       stream,
       getToken,
       {
-        onInterim: (_itemId, text) => {
-          setInterim((prev) => ({ ...prev, [p.id]: text }));
-          onInterim?.(p.id, p.label, text);
+        onInterim: (_itemId, text, translation) => {
+          setInterim((prev) => ({ ...prev, [p.id]: { text, translation } }));
+          onInterim?.(p.id, p.label, text, translation);
         },
         onFinal: (u) => postFinal(sid, p.id, u, rt?.model ?? ""),
         onError: (msg) => {
@@ -298,6 +302,14 @@ export function AudioCapturePanel({
       () => performance.now() - t0,
       (state) => setConn((prev) => ({ ...prev, [p.id]: state })),
     );
+    if (playVoice) {
+      rt.onRemoteAudio = (remote) => {
+        const el = voices.current.get(p.id) ?? new Audio();
+        el.srcObject = remote;
+        voices.current.set(p.id, el);
+        void el.play().catch(() => undefined);
+      };
+    }
     realtime.current.set(p.id, rt);
     await rt.start();
   }
@@ -312,13 +324,14 @@ export function AudioCapturePanel({
         sources: picked.map((p) => ({ id: p.id, kind: p.kind, label: p.label.trim() || p.id, single_speaker: p.singleSpeaker })),
         translate,
         languages: langs,
-        mode: streamingWanted ? "streaming" : "chunked",
+        mode: !streamingWanted ? "chunked" : latency === "interpret" ? "interpret" : "streaming",
         noise_suppression: noise,
-        caption_latency: latency,
+        caption_latency: latency === "interpret" ? "balanced" : latency,
         consent_confirmed: consent,
       });
       const sid = res.session.id;
-      const streaming = res.session.capture_config?.mode === "streaming";
+      const mode = res.session.capture_config?.mode;
+      const streaming = mode === "streaming" || mode === "interpret";
       if (streamingWanted && !streaming) setNote(t.audio.streamingUnavailable);
       const t0 = performance.now();
       for (const p of picked) {
@@ -363,6 +376,11 @@ export function AudioCapturePanel({
     try {
       realtime.current.forEach((r) => r.stop());
       realtime.current.clear();
+      voices.current.forEach((el) => {
+        el.pause();
+        el.srcObject = null;
+      });
+      voices.current.clear();
       await Promise.race([Promise.all([...finals.current.values()]), sleep(15000)]);
       finals.current.clear();
       setInterim({});
@@ -514,7 +532,7 @@ export function AudioCapturePanel({
               {streamingWanted && (
                 <div className="ml-6 flex flex-wrap items-center gap-2" role="radiogroup" aria-label={t.audio.latency.title} data-testid="caption-latency">
                   <span className="text-xs font-bold">{t.audio.latency.title}:</span>
-                  {(["fast", "balanced", "accurate"] as const).map((lv) => (
+                  {(["interpret", "fast", "balanced", "accurate"] as const).map((lv) => (
                     <button
                       key={lv}
                       type="button"
@@ -530,6 +548,9 @@ export function AudioCapturePanel({
                     </button>
                   ))}
                   <span className="w-full text-xs text-muted">{t.audio.latency.hint[latency]}</span>
+                  {latency === "interpret" && (
+                    <Checkbox label={t.audio.playVoice} checked={playVoice} onChange={(e) => setPlayVoice(e.target.checked)} data-testid="play-voice" />
+                  )}
                 </div>
               )}
               <Checkbox label={t.audio.translate} checked={translate} onChange={(e) => setTranslate(e.target.checked)} />
@@ -568,15 +589,15 @@ export function AudioCapturePanel({
                 );
               })}
             </ul>
-            {!onInterim && Object.values(interim).some(Boolean) && (
+            {!onInterim && Object.values(interim).some((x) => x.text || x.translation) && (
               <div className="rounded-md border border-sky-200 bg-sky-50 p-3" data-testid="interim-captions" aria-live="polite">
                 <p className="mb-1 text-xs font-medium text-sky-900">{t.audio.speakingNow}</p>
                 {picked
-                  .filter((p) => interim[p.id])
+                  .filter((p) => interim[p.id]?.text || interim[p.id]?.translation)
                   .map((p) => (
                     <p key={p.id} className="text-base text-ink">
                       <span className="mr-2 text-xs font-medium text-muted">{p.label}:</span>
-                      {interim[p.id]}
+                      {interim[p.id].translation || interim[p.id].text}
                       <span className="ml-0.5 animate-pulse">▍</span>
                     </p>
                   ))}

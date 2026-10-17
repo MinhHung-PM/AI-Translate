@@ -32,6 +32,9 @@ class RealtimeToken:
     # True when the session has no server VAD: the browser must send
     # input_audio_buffer.commit at the end of each utterance.
     client_commits: bool
+    # "transcription" (captions; app translates) or "translation" (OpenAI interprets live).
+    kind: str = "transcription"
+    calls_url: str = "https://api.openai.com/v1/realtime/calls"
 
 
 WHISPER = "gpt-realtime-whisper"  # true streaming: no VAD, text emitted while speaking ("delay")
@@ -135,13 +138,86 @@ def create_transcription_token(
             continue
         break
     assert last is not None
-    status = last.status_code
+    raise _error_for(last, "live caption")
+
+
+def _error_for(resp: httpx.Response, what: str) -> ProviderError:
+    status = resp.status_code
     if status == 401:
-        raise ProviderError(ProviderErrorCode.auth_failed, "The OpenAI API key was rejected")
+        return ProviderError(ProviderErrorCode.auth_failed, "The OpenAI API key was rejected")
     if status == 403:
-        raise ProviderError(ProviderErrorCode.permission_denied, "This API key cannot use the OpenAI Realtime API")
+        return ProviderError(ProviderErrorCode.permission_denied, "This API key cannot use the OpenAI Realtime API")
     if status == 429:
-        raise ProviderError(ProviderErrorCode.rate_limited, "OpenAI rate limit or quota exceeded", retryable=True)
+        return ProviderError(ProviderErrorCode.rate_limited, "OpenAI rate limit or quota exceeded", retryable=True)
     if status >= 500:
-        raise ProviderError(ProviderErrorCode.unavailable, f"OpenAI error {status}", retryable=True)
-    raise ProviderError(ProviderErrorCode.bad_request, f"OpenAI rejected the live caption session ({status})")
+        return ProviderError(ProviderErrorCode.unavailable, f"OpenAI error {status}", retryable=True)
+    return ProviderError(ProviderErrorCode.bad_request, f"OpenAI rejected the {what} session ({status})")
+
+
+# ---- live interpretation (gpt-realtime-translate) ------------------------------
+#
+# Contract: openai/openai-openapi (POST /realtime/translations/client_secrets) and the
+# OpenAI cookbook "Build Live Translation Apps with gpt-realtime-translate" (2026-05):
+# the browser posts its SDP offer to /v1/realtime/translations/calls with the ephemeral
+# key; the data channel "oai-events" carries session.input_transcript.delta (source
+# words, when input transcription is configured) and session.output_transcript.delta
+# (translated words). Deltas are append-only; there is no per-utterance "completed"
+# event, so the browser segments sentences itself. No prompt/glossary support.
+
+TRANSLATION_OUTPUT_LANGUAGES = frozenset({"es", "pt", "fr", "ja", "ru", "zh", "de", "ko", "hi", "id", "vi", "it", "en"})
+
+
+def create_translation_token(
+    creds: Credentials,
+    *,
+    target_language: str,
+    noise_reduction: str | None,
+    model: str,
+    input_transcription_model: str | None,
+    ttl_seconds: int,
+    timeout_s: float,
+) -> RealtimeToken:
+    if not creds.api_key:
+        raise ProviderError(ProviderErrorCode.not_configured, "An OpenAI API key is required for live interpretation")
+    if target_language not in TRANSLATION_OUTPUT_LANGUAGES:
+        raise ProviderError(ProviderErrorCode.bad_request, f"Live interpretation cannot output '{target_language}'")
+    base = (creds.base_url or "https://api.openai.com/v1").rstrip("/")
+    body = {
+        "expires_after": {"anchor": "created_at", "seconds": ttl_seconds},
+        "session": {
+            "model": model,
+            "audio": {
+                "input": {
+                    "transcription": {"model": input_transcription_model} if input_transcription_model else None,
+                    "noise_reduction": {"type": noise_reduction} if noise_reduction else None,
+                },
+                "output": {"language": target_language},
+            },
+        },
+    }
+    try:
+        with httpx.Client(
+            timeout=timeout_s,
+            headers={"Authorization": f"Bearer {creds.api_key}"},
+            transport=stt_module._transport_override,
+            follow_redirects=False,
+        ) as client:
+            resp = client.post(f"{base}/realtime/translations/client_secrets", json=body)
+    except httpx.TimeoutException:
+        raise ProviderError(ProviderErrorCode.timeout, "OpenAI did not respond in time", retryable=True) from None
+    except httpx.HTTPError:
+        raise ProviderError(ProviderErrorCode.unavailable, "Could not reach OpenAI", retryable=True) from None
+    if resp.status_code != 200:
+        raise _error_for(resp, "live interpretation")
+    data = resp.json()
+    value = data.get("value")
+    if not isinstance(value, str) or not value:
+        raise ProviderError(ProviderErrorCode.invalid_output, "OpenAI returned no client secret")
+    return RealtimeToken(
+        value=value,
+        expires_at=int(data.get("expires_at") or 0),
+        model=model,
+        client_commits=False,
+        kind="translation",
+        calls_url="https://api.openai.com/v1/realtime/translations/calls",
+    )

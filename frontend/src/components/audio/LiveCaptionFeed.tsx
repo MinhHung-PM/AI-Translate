@@ -10,6 +10,8 @@ export interface InterimCaption {
   sourceId: string;
   label: string;
   text: string;
+  /** Live interpretation: translated words so far (shown as the headline). */
+  translation?: string;
 }
 
 // Speaker colours: avatar ring + bubble tint (orange = "me").
@@ -58,7 +60,7 @@ export function LiveCaptionFeed({
   const [size, setSize] = useState(1);
   const [follow, setFollow] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
-  const interimText = interim.map((i) => i.text).join("|");
+  const interimText = interim.map((i) => i.text + (i.translation ?? "")).join("|");
 
   useEffect(() => {
     if (follow) endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -174,9 +176,14 @@ export function LiveCaptionFeed({
                     </p>
                     <div className="rounded-2xl border-2 border-dashed border-ink bg-white px-4 py-2.5 text-left">
                       <p className={cn("leading-snug text-ink", SIZES[size])}>
-                        {i.text}
+                        {i.translation || i.text}
                         <Dots />
                       </p>
+                      {i.translation && i.text && (
+                        <p className="mt-1 border-t border-dashed border-ink/30 pt-1 text-sm text-muted" data-testid="interim-original">
+                          {i.text}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

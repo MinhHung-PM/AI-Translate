@@ -41,7 +41,7 @@ from app.core.errors import Conflict, ProviderNotConfigured, SpeechToTextFailed,
 from app.db.base import utcnow
 from app.integrations.models import CanonicalEvent
 from app.models import AIProviderConfiguration, AudioSpeakerProfile, LiveSession, Meeting, Project, TranscriptEntry
-from app.models.enums import Language, LiveSessionStatus
+from app.models.enums import Language, LiveSessionStatus, TranslationStatus
 from app.services.ingestion import ingest_event
 from app.services.provider_config import get_keyring, resolve_provider
 from app.services.transcripts.normalize import clean_text
@@ -49,6 +49,7 @@ from app.services.usage import DbUsageMeter, UsageContext
 
 CONNECTOR = "audio_capture"
 ACTIVE = (LiveSessionStatus.running, LiveSessionStatus.waiting)
+STREAMING_MODES = ("streaming", "interpret")
 
 
 class AudioSourceIn(BaseModel):
@@ -65,7 +66,9 @@ class AudioSessionIn(BaseModel):
     translate: bool = True
     # streaming = words appear while speaking (OpenAI Realtime over WebRTC);
     # chunked = one request per utterance (supports voice-reference speaker tracking).
-    mode: Literal["streaming", "chunked"] = "streaming"
+    # interpret = OpenAI live interpretation (gpt-realtime-translate): translated words
+    # stream while speaking; no glossary/prompt support and no diarization.
+    mode: Literal["streaming", "chunked", "interpret"] = "streaming"
     # Browser-side noise suppression level (also drives OpenAI's input noise reduction in streaming mode).
     noise_suppression: Literal["off", "standard", "strong"] = "standard"
     # Streaming captions: fast/balanced = words while speaking (gpt-realtime-whisper, delay minimal/low);
@@ -196,6 +199,11 @@ def start_session(
     if active_session(db, meeting) is not None:
         raise Conflict("A live session is already running for this meeting")
     stt, _ = resolve_stt(db, user_id, session_id)  # fail fast when STT is unavailable
+    if body.mode == "interpret" and not stt.is_mock:
+        from app.audio.realtime import TRANSLATION_OUTPUT_LANGUAGES
+
+        if meeting.target_language.value not in TRANSLATION_OUTPUT_LANGUAGES:
+            raise ValidationFailed("Live interpretation does not support this meeting's target language")
     languages = list(dict.fromkeys(body.languages or [])) or [
         lang.value for lang in dict.fromkeys(x for x in (meeting.source_language, meeting.target_language) if x)
     ]
@@ -577,27 +585,44 @@ def realtime_token(
     session_id: uuid.UUID | None,
     source_id: str,
 ) -> Any:
-    from app.audio.realtime import create_transcription_token
+    from app.audio.realtime import create_transcription_token, create_translation_token
 
     settings = get_settings()
     if live.connector != CONNECTOR or live.status not in ACTIVE:
         raise Conflict("This audio capture session is not running")
     config = live.capture_config or {}
-    if config.get("mode") != "streaming":
+    if config.get("mode") not in STREAMING_MODES:
         raise Conflict("This session does not use streaming captions")
     source = source_config(live, source_id)
     stt, _ = resolve_stt(db, user_id, session_id)
     creds = getattr(stt, "_creds", None)
     if stt.is_mock or creds is None:
         raise ProviderNotConfigured("Streaming captions need an OpenAI API key (AI Settings).")
+    noise_reduction = (
+        None
+        if config.get("noise_suppression") == "off"
+        else ("near_field" if source.get("kind") == "microphone" else "far_field")
+    )
     try:
+        if config.get("mode") == "interpret":
+            return _issue(
+                db,
+                live,
+                create_translation_token(
+                    creds,
+                    target_language=meeting.target_language.value,
+                    noise_reduction=noise_reduction,
+                    model=settings.stt_interpret_model,
+                    input_transcription_model=settings.stt_interpret_input_transcription_model or None,
+                    ttl_seconds=settings.stt_realtime_token_ttl_seconds,
+                    timeout_s=settings.stt_timeout_seconds,
+                ),
+            )
         token = create_transcription_token(
             creds,
             languages=list(config.get("languages") or []),
             keywords=_keywords(db, meeting),
-            noise_reduction=None
-            if config.get("noise_suppression") == "off"
-            else ("near_field" if source.get("kind") == "microphone" else "far_field"),
+            noise_reduction=noise_reduction,
             models=(
                 [settings.stt_realtime_model, settings.stt_realtime_fallback_model]
                 if config.get("caption_latency") == "accurate"
@@ -618,6 +643,10 @@ def realtime_token(
         raise SpeechToTextFailed(
             err.message, details={"provider_code": err.code.value, "retryable": err.retryable}
         ) from None
+    return _issue(db, live, token)
+
+
+def _issue(db: Session, live: LiveSession, token: Any) -> Any:
     live.last_event_at = utcnow()
     live.status_message = None
     db.commit()
@@ -632,6 +661,9 @@ class RealtimeSegmentIn(BaseModel):
     duration_ms: int | None = Field(default=None, ge=0, le=3_600_000)
     model: str | None = Field(default=None, max_length=64)
     speaker: str | None = Field(default=None, max_length=64)  # provider label from segment events
+    # Interpret mode: the translation OpenAI streamed for this sentence (stored as-is,
+    # not re-translated). Empty when the speech was already in the target language.
+    translated_text: str | None = Field(default=None, max_length=8000)
 
 
 def _streaming_profile(db: Session, live: LiveSession, source_id: str, label: str) -> AudioSpeakerProfile:
@@ -661,10 +693,12 @@ def ingest_realtime_segment(
     if live.connector != CONNECTOR or live.status not in ACTIVE:
         raise Conflict("This audio capture session is not running")
     config = live.capture_config or {}
-    if config.get("mode") != "streaming":
+    if config.get("mode") not in STREAMING_MODES:
         raise Conflict("This session does not use streaming captions")
     source = source_config(live, body.source_id)
-    text_value = clean_text(body.text)
+    interpret = config.get("mode") == "interpret"
+    translated = clean_text(body.translated_text or "") if interpret else ""
+    text_value = clean_text(body.text) or translated  # input transcription may lag/be absent
     if not text_value:
         return ChunkOutcome()
     chunk_ref = f"{body.source_id}:rt:{body.item_id}"
@@ -685,7 +719,7 @@ def ingest_realtime_segment(
         return ChunkOutcome(duplicate=True, echoes=1)
 
     settings = get_settings()
-    model = body.model or settings.stt_realtime_model
+    model = body.model or (settings.stt_interpret_model if interpret else settings.stt_realtime_model)
     seconds = round((body.duration_ms or 0) / 1000, 2)
     ctx = UsageContext(user_id, meeting.project_id, meeting.id, None, "openai", model, "byok")
     rec = DbUsageMeter(db).record(
@@ -721,15 +755,28 @@ def ingest_realtime_segment(
             "audio_speaker_key": profile.speaker_key if profile else None,
             "stt_model": model,
             "streaming": True,
+            **({"interpreted": True, "original_missing": not clean_text(body.text)} if interpret else {}),
         },
     )
     entry, created = ingest_event(db, meeting, event)
     outcome = ChunkOutcome(entries=[entry] if entry is not None and created else [])
+    if interpret and translated and outcome.entries:
+        from app.services.translation import get_or_create_translation
+
+        for e in outcome.entries:
+            tr = get_or_create_translation(db, e, meeting.target_language)
+            tr.text, tr.status, tr.provider, tr.model, tr.error_message = (
+                translated,
+                TranslationStatus.done,
+                "openai-realtime-translate",
+                model,
+                None,
+            )
     live.entries_emitted += len(outcome.entries)
     live.entries_total = live.entries_emitted
     live.last_event_at = utcnow()
     db.commit()
-    if outcome.entries and config.get("translate", True):
+    if outcome.entries and config.get("translate", True) and not (interpret and translated):
         outcome.note = translate_now(
             db, live=live, meeting=meeting, user_id=user_id, session_id=session_id, entries=outcome.entries
         )

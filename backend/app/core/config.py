@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     stt_realtime_streaming_model: str = "gpt-realtime-whisper"  # words while speaking ("fast"/"balanced")
     stt_realtime_fallback_model: str = "gpt-4o-transcribe"
     stt_realtime_token_ttl_seconds: int = 600
+    # Live interpretation (OpenAI translates speech directly; words stream in the target language).
+    stt_interpret_model: str = "gpt-realtime-translate"
+    stt_interpret_input_transcription_model: str = "gpt-realtime-whisper"  # source-language captions
     # Chunks quieter than this RMS (0..1) are not sent: near-silence makes STT models hallucinate.
     audio_min_rms: float = 0.004
     stt_timeout_seconds: float = 60.0

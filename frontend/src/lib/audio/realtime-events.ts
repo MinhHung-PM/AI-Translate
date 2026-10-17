@@ -21,10 +21,13 @@ export interface FinalUtterance {
   startMs: number;
   durationMs: number | null;
   speaker: string | null;
+  /** Live interpretation: the translation OpenAI streamed for this sentence. */
+  translation?: string;
 }
 
 export interface RealtimeHandlers {
-  onInterim: (itemId: string, text: string) => void;
+  /** `translation` is set only by live interpretation sessions (translated words so far). */
+  onInterim: (itemId: string, text: string, translation?: string) => void;
   onFinal: (u: FinalUtterance) => void;
   onError: (message: string) => void;
 }

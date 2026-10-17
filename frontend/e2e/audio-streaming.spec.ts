@@ -97,7 +97,13 @@ test("Streaming captions: interim words appear while speaking, final sentence is
         w.commits = 0;
         const send = (o: object) => dc.send(JSON.stringify(o));
         // Like gpt-realtime-whisper: text streams while speaking (no item yet, no server VAD)…
+        // (Chromium can fire "open" twice — the first one early — on the answering side:
+        // script once, after the channel has settled.)
+        let scripted = false;
         dc.onopen = async () => {
+          if (scripted) return;
+          scripted = true;
+          await new Promise((r) => setTimeout(r, 500));
           const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
           for (const d of ["Xin ", "chào, ", "tôi ", "tên ", "là "]) {
             send({ type: "conversation.item.input_audio_transcription.delta", delta: d });
@@ -138,6 +144,7 @@ test("Streaming captions: interim words appear while speaking, final sentence is
   await tid(page, "mic-list").getByRole("checkbox").first().check();
   await tid(page, "audio-consent").check();
   await expect(tid(page, "audio-streaming")).toBeChecked();
+  await tid(page, "caption-latency").getByRole("radio", { name: "Phụ đề cân bằng" }).click();
   await tid(page, "start-audio").click();
 
   await expect(tid(page, "audio-sources-live")).toContainText("Đang truyền", { timeout: 20_000 });
@@ -148,6 +155,117 @@ test("Streaming captions: interim words appear while speaking, final sentence is
   expect(Number(segments[0].offset_ms)).toBeGreaterThanOrEqual(0);
   // The local sentence detector told OpenAI where the utterance ended.
   expect(await peer.evaluate(() => (window as unknown as { commits: number }).commits)).toBeGreaterThanOrEqual(1);
+  await expect(tid(page, "interim-captions")).toHaveCount(0);
+
+  await tid(page, "stop-audio").click();
+  await expect(tid(page, "start-audio")).toBeVisible({ timeout: 30_000 });
+});
+
+test("Live interpretation: translated words stream in with the original, sentence stored with its translation", async ({ page, context }) => {
+  const peer = await context.newPage();
+  await peer.goto("about:blank");
+  const segments: Record<string, unknown>[] = [];
+  const sessionBodies: Record<string, unknown>[] = [];
+
+  await page.goto("/login");
+  await tid(page, "dev-user").selectOption("pm@example.com");
+  await page.getByRole("button", { name: "Đăng nhập" }).click();
+  await expect(page.getByRole("heading", { name: "Tổng quan" })).toBeVisible();
+  await page.getByRole("link", { name: "Dịch trực tiếp" }).first().click();
+  await tid(page, "live-project").selectOption({ label: (await tid(page, "live-project").locator("option", { hasText: /ALPHA/ }).first().textContent()) ?? "" });
+  await tid(page, "live-start-now").click();
+  await expect(page).toHaveURL(/\/live$/);
+
+  await page.route(/\/api\/v1\/meetings\/[^/]+\/audio-sessions$/, async (route) => {
+    sessionBodies.push(JSON.parse(route.request().postData() ?? "{}"));
+    const res = await route.fetch();
+    const body = await res.json();
+    body.session.capture_config = { ...body.session.capture_config, mode: "interpret" };
+    body.session.is_demo = false;
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.route(/realtime-token$/, (route) =>
+    route.fulfill({
+      json: {
+        client_secret: "ek_tr_fake",
+        expires_at: 0,
+        model: "gpt-realtime-translate",
+        client_commits: false,
+        kind: "translation",
+        target_language: "vi",
+        calls_url: "https://api.openai.com/v1/realtime/translations/calls",
+      },
+    }),
+  );
+  await page.route(/\/segments$/, async (route) => {
+    segments.push(JSON.parse(route.request().postData() ?? "{}"));
+    await route.fulfill({ json: { entries: [], duplicate: false, note: null } });
+  });
+  let auth = "";
+  await page.route("https://api.openai.com/v1/realtime/translations/calls", async (route) => {
+    auth = route.request().headers()["authorization"] ?? "";
+    const offer = route.request().postData() ?? "";
+    const answer = await peer.evaluate(async (sdp) => {
+      const pc = new RTCPeerConnection();
+      (window as unknown as { pc: RTCPeerConnection }).pc = pc;
+      pc.ondatachannel = (ev) => {
+        const dc = ev.channel;
+        const send = (o: object) => dc.send(JSON.stringify(o));
+        // Like gpt-realtime-translate: append-only source + translated deltas, no "completed".
+        let scripted = false;
+        dc.onopen = async () => {
+          if (scripted) return;
+          scripted = true;
+          await new Promise((r) => setTimeout(r, 500));
+          const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+          send({ type: "session.created", session: {} });
+          const script: [string, string][] = [
+            ["session.input_transcript.delta", "皆さん、"],
+            ["session.output_transcript.delta", "Xin chào "],
+            ["session.input_transcript.delta", "こんにちは。"],
+            ["session.output_transcript.delta", "mọi người"],
+            ["session.output_transcript.delta", "."],
+          ];
+          let elapsed = 0;
+          for (const [type, delta] of script) {
+            elapsed += 200;
+            send({ type, delta, elapsed_ms: elapsed });
+            await wait(400);
+          }
+        };
+      };
+      await pc.setRemoteDescription({ type: "offer", sdp });
+      const ans = await pc.createAnswer();
+      await pc.setLocalDescription(ans);
+      await new Promise<void>((r) => {
+        if (pc.iceGatheringState === "complete") return r();
+        pc.onicegatheringstatechange = () => pc.iceGatheringState === "complete" && r();
+        setTimeout(r, 3000);
+      });
+      return pc.localDescription!.sdp;
+    }, offer);
+    await route.fulfill({ status: 201, contentType: "application/sdp", body: answer });
+  });
+
+  await tid(page, "unlock-mics").click();
+  await tid(page, "mic-list").getByRole("checkbox").first().check();
+  await tid(page, "audio-consent").check();
+  // Live interpretation is the default streaming mode.
+  await expect(tid(page, "caption-latency").getByRole("radio", { name: /Phiên dịch trực tiếp/ })).toHaveAttribute("aria-checked", "true");
+  await expect(tid(page, "play-voice")).not.toBeChecked();
+  await tid(page, "start-audio").click();
+
+  await expect(tid(page, "interim-captions")).toContainText("Xin chào", { timeout: 20_000 });
+  await expect(tid(page, "interim-original")).toContainText("皆さん");
+  await expect.poll(() => segments.length, { timeout: 20_000 }).toBe(1);
+  expect(sessionBodies[0]).toMatchObject({ mode: "interpret", caption_latency: "balanced" });
+  expect(auth).toBe("Bearer ek_tr_fake");
+  expect(segments[0]).toMatchObject({
+    text: "皆さん、こんにちは。",
+    translated_text: "Xin chào mọi người.",
+    model: "gpt-realtime-translate",
+  });
+  expect(String(segments[0].item_id)).toMatch(/^tr-/);
   await expect(tid(page, "interim-captions")).toHaveCount(0);
 
   await tid(page, "stop-audio").click();

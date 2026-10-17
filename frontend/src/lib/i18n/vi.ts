@@ -556,12 +556,16 @@ export const vi = {
     chunkedHint: "Gửi từng câu sau khi dứt câu (chậm hơn vài giây) nhưng tách người nói trong âm thanh cuộc họp bằng mẫu giọng.",
     streamingUnavailable: "Chế độ chữ chạy cần OpenAI API key — đang dùng chế độ theo câu (MOCK).",
     speakingNow: "Đang nói…",
+    playVoice: "Phát giọng đọc bản dịch (nên đeo tai nghe)",
     latency: {
-      title: "Độ trễ phụ đề",
-      fast: "Nhanh nhất",
-      balanced: "Cân bằng (khuyên dùng)",
+      title: "Chế độ",
+      interpret: "Phiên dịch trực tiếp (khuyên dùng)",
+      fast: "Phụ đề nhanh nhất",
+      balanced: "Phụ đề cân bằng",
       accurate: "Chính xác theo câu",
       hint: {
+        interpret:
+          "OpenAI phiên dịch thẳng từ giọng nói (gpt-realtime-translate): bản dịch chạy từng chữ ngay khi đang nói, kèm lời gốc. Không dùng bảng thuật ngữ, không tách người nói trong cùng một nguồn; tên riêng nên kiểm tra lại.",
         fast: "Chữ hiện gần như ngay khi nói (gpt-realtime-whisper, delay minimal); đôi khi kém chính xác hơn.",
         balanced: "Chữ chạy theo lời nói với độ chính xác tốt (gpt-realtime-whisper, delay low). Câu được chốt khi ngắt hơi hoặc tối đa 12 giây.",
         accurate: "Chờ hết câu rồi mới hiện (nhận dạng theo lượt nói); hỗ trợ danh sách ngôn ngữ + thuật ngữ.",

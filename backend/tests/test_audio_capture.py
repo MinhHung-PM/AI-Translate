@@ -416,12 +416,19 @@ class FakeRealtime:
         self.bodies: list[dict[str, Any]] = []
         self.live_model_available = True
         self.whisper_available = True
+        self.translate_available = True
 
     def handle(self, request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/v1/realtime/client_secrets"
         assert request.headers["authorization"] == f"Bearer {OPENAI_KEY}"
         body = json.loads(request.content)
         self.bodies.append(body)
+        if request.url.path == "/v1/realtime/translations/client_secrets":
+            if not self.translate_available:
+                return httpx.Response(403, json={"error": {"message": "no access"}})
+            return httpx.Response(
+                200, json={"value": "ek_tr_456", "expires_at": 1999999999, "session": body["session"]}
+            )
+        assert request.url.path == "/v1/realtime/client_secrets"
         model = body["session"]["audio"]["input"]["transcription"]["model"]
         if model == "gpt-live-transcribe" and not self.live_model_available:
             return httpx.Response(400, json={"error": {"message": "Invalid model: gpt-live-transcribe"}})
@@ -652,3 +659,74 @@ def test_noise_suppression_setting_drives_openai_noise_reduction(pm, realtime):
         },
     )
     assert bad.status_code == 422
+
+
+def test_interpret_mode_streams_openai_translation_and_stores_it(pm, db, realtime, caplog):
+    meeting = create_meeting(pm, source_language="ja", target_language="vi")
+    sid = start(pm, meeting["id"], mode="interpret")["session"]["id"]
+    r = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "meeting"})
+    assert r.status_code == 200, r.text
+    tok = r.json()
+    assert tok["kind"] == "translation" and tok["client_secret"] == "ek_tr_456"
+    assert tok["calls_url"] == "https://api.openai.com/v1/realtime/translations/calls"
+    assert tok["model"] == "gpt-realtime-translate" and tok["target_language"] == "vi"
+    assert tok["client_commits"] is False
+    assert OPENAI_KEY not in r.text and OPENAI_KEY not in caplog.text
+    body = realtime.bodies[-1]
+    assert body["expires_after"]["seconds"] == 600
+    assert body["session"] == {
+        "model": "gpt-realtime-translate",
+        "audio": {
+            "input": {"transcription": {"model": "gpt-realtime-whisper"}, "noise_reduction": {"type": "far_field"}},
+            "output": {"language": "vi"},
+        },
+    }
+    seg = {
+        "source_id": "meeting",
+        "item_id": "tr-1",
+        "text": "本日の議題はリリース計画です。",
+        "translated_text": "Chủ đề hôm nay là kế hoạch phát hành.",
+        "offset_ms": 400,
+        "duration_ms": 2600,
+    }
+    e = pm.post(f"/audio-sessions/{sid}/segments", json=seg).json()["entries"][0]
+    # The interpreter's own translation is stored as-is (no second AI translation).
+    assert e["translation"]["status"] == "done"
+    assert e["translation"]["text"] == "Chủ đề hôm nay là kế hoạch phát hành."
+    assert e["original_text"] == "本日の議題はリリース計画です。"
+    assert e["source_metadata"]["interpreted"] is True and e["source_metadata"]["stt_model"] == "gpt-realtime-translate"
+    assert db.scalars(select(UsageRecord).where(UsageRecord.operation == "translation")).all() == []
+    # No source transcript arrived: the translation stands in, flagged as such.
+    e2 = pm.post(
+        f"/audio-sessions/{sid}/segments",
+        json={**seg, "item_id": "tr-2", "text": "", "translated_text": "Bắt đầu nhé."},
+    ).json()["entries"][0]
+    assert e2["original_text"] == "Bắt đầu nhé." and e2["source_metadata"]["original_missing"] is True
+    # Speech already in the target language gets no interpreter output → normal pipeline.
+    e3 = pm.post(
+        f"/audio-sessions/{sid}/segments",
+        json={**seg, "item_id": "tr-3", "text": "Vâng, tôi đồng ý.", "translated_text": None},
+    ).json()["entries"][0]
+    assert e3["translation"]["status"] == "done"
+
+
+def test_interpret_token_errors_and_unsupported_cases(pm, realtime):
+    meeting = create_meeting(pm, source_language="vi", target_language="ja")
+    sid = start(pm, meeting["id"], mode="interpret")["session"]["id"]
+    realtime.translate_available = False
+    r = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"})
+    assert r.status_code == 502 and "cannot use the OpenAI Realtime API" in r.text
+    # translated_text is ignored outside interpret mode.
+    m2 = create_meeting(pm)
+    sid2 = start(pm, m2["id"])["session"]["id"]
+    e = pm.post(
+        f"/audio-sessions/{sid2}/segments",
+        json={"source_id": "mic", "item_id": "x1", "text": "Xin chào", "translated_text": "BOGUS", "offset_ms": 0},
+    ).json()["entries"][0]
+    assert e["translation"]["text"] != "BOGUS"
+
+
+def test_interpret_mode_falls_back_to_chunked_on_mock(pm):
+    meeting = create_meeting(pm)
+    out = start(pm, meeting["id"], mode="interpret")
+    assert out["session"]["capture_config"]["mode"] == "chunked"

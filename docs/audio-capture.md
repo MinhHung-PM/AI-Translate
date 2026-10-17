@@ -1,10 +1,31 @@
 # Thu âm & dịch trực tiếp (Live audio capture)
 
-**Ngày xác minh:** 2026-10-16 · **Đã kiểm chứng với OpenAI thật:** **Chưa** (môi trường xây dựng không có
+**Ngày xác minh:** 2026-10-16 (phiên dịch trực tiếp: 2026-10-17) · **Đã kiểm chứng với OpenAI thật:** **Chưa** (môi trường xây dựng không có
 API key). Hợp đồng API được lấy từ đặc tả chính thức `openai/openai-openapi`; mọi test dùng HTTP giả lập
 hoặc bộ nhận dạng MOCK.
 
-## Hai chế độ
+## Phiên dịch trực tiếp (mặc định) — `gpt-realtime-translate`
+
+**Xác minh hợp đồng:** 2026-10-17, từ `openai/openai-openapi` (`POST /realtime/translations/client_secrets`,
+sự kiện `session.*`) và cookbook chính thức *"Build Live Translation Apps with gpt-realtime-translate"*
+(`openai/openai-cookbook`, 2026-05). **Chưa** chạy với OpenAI thật (môi trường xây dựng không có API key).
+
+| | |
+|---|---|
+| Cách chạy | Máy chủ cấp client secret tạm thời (`/v1/realtime/translations/client_secrets`, `session.audio.output.language` = ngôn ngữ đích của cuộc họp, `input.transcription.model = gpt-realtime-whisper` để có kèm lời gốc, `noise_reduction` theo cài đặt lọc tạp âm). Trình duyệt gửi SDP tới `https://api.openai.com/v1/realtime/translations/calls`; âm thanh đi thẳng trình duyệt → OpenAI |
+| Chữ hiện | **Bản dịch chạy từng chữ** ngay khi đang nói (`session.output_transcript.delta`), lời gốc chạy bên dưới (`session.input_transcript.delta`) |
+| Chốt câu | API không có sự kiện "completed": trình duyệt chốt bong bóng khi **ngừng có chữ mới 1,3 s** (bản dịch đã hết câu) hoặc 2,6 s (bản dịch chưa hết câu — người phiên dịch thường nói trễ hơn người nói); bong bóng dài > 160 ký tự được cắt ở dấu hết câu. Câu chốt được lưu kèm **bản dịch của OpenAI** (không dịch lại lần hai, không tốn token dịch) |
+| Giọng đọc bản dịch | OpenAI trả cả âm thanh đã dịch; mặc định **tắt**, bật "Phát giọng đọc bản dịch" (nên đeo tai nghe để micro không thu lại) |
+| Ngôn ngữ đích hỗ trợ | es, pt, fr, **ja**, ru, zh, de, ko, hi, id, **vi**, it, **en**; đầu vào > 70 ngôn ngữ (tự nhận biết) |
+
+**Giới hạn (theo tài liệu OpenAI):** không hỗ trợ prompt / **bảng thuật ngữ** / danh sách tên — tên riêng và
+thuật ngữ có thể bị dịch sai, cần kiểm tra lại; **không tách người nói** trong cùng một nguồn (mỗi nguồn = một
+nhãn; muốn tách người, dùng chế độ "Theo câu"); lời nói **đã là ngôn ngữ đích** có thể không có bản dịch → câu
+được lưu với lời gốc và đi qua đường dịch thường (trùng ngôn ngữ thì giữ nguyên). Thứ tự lời gốc/bản dịch trong một
+bong bóng là gần đúng (hai luồng chữ độc lập). Chi phí phút âm thanh của `gpt-realtime-translate` chưa có trong
+`catalog.json` → ghi số giây, chưa ước tính tiền.
+
+## Các chế độ phụ đề
 
 | | **Chữ chạy theo lời nói** (mặc định) | **Theo câu** |
 |---|---|---|
@@ -114,6 +135,7 @@ Thời gian người nói dứt câu (VAD chờ 0,65 s im lặng) + nhận dạn
 | `AUDIO_MIN_RMS` | `0.004` | ngưỡng âm lượng tối thiểu để gửi đi nhận dạng |
 | `STT_REALTIME_MODEL` / `STT_REALTIME_FALLBACK_MODEL` | `gpt-live-transcribe` / `gpt-4o-transcribe` | chế độ chữ chạy |
 | `STT_REALTIME_TOKEN_TTL_SECONDS` | `600` | thời hạn client secret tạm thời |
+| `STT_INTERPRET_MODEL` / `STT_INTERPRET_INPUT_TRANSCRIPTION_MODEL` | `gpt-realtime-translate` / `gpt-realtime-whisper` | phiên dịch trực tiếp; để trống model thứ hai = không lấy lời gốc |
 | `STT_TIMEOUT_SECONDS` | `60` | |
 | `AUDIO_CHUNK_MAX_SECONDS` / `AUDIO_CHUNK_MAX_BYTES` | `30` / `2000000` | giới hạn mỗi đoạn |
 | `AUDIO_MAX_SOURCES` | `4` | số nguồn mỗi phiên |

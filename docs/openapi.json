@@ -5930,7 +5930,8 @@
       "type": "string",
       "enum": [
        "streaming",
-       "chunked"
+       "chunked",
+       "interpret"
       ],
       "title": "Mode",
       "default": "streaming"
@@ -10478,6 +10479,18 @@
        }
       ],
       "title": "Speaker"
+     },
+     "translated_text": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 8000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Translated Text"
      }
     },
     "type": "object",
@@ -10525,6 +10538,26 @@
       "type": "boolean",
       "title": "Client Commits",
       "default": false
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "transcription",
+       "translation"
+      ],
+      "title": "Kind",
+      "default": "transcription"
+     },
+     "target_language": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Language"
      }
     },
     "type": "object",

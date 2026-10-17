@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
@@ -61,6 +61,10 @@ class RealtimeTokenOut(BaseModel):
     model: str
     calls_url: str
     client_commits: bool = False
+    # "translation": OpenAI interprets live (gpt-realtime-translate); the browser
+    # posts each finished sentence with its translation.
+    kind: Literal["transcription", "translation"] = "transcription"
+    target_language: str | None = None
 
 
 class SpeakerRename(BaseModel):
@@ -175,8 +179,10 @@ def create_realtime_token(session_id: uuid.UUID, body: RealtimeTokenIn, auth: Au
         client_secret=token.value,
         expires_at=token.expires_at,
         model=token.model,
-        calls_url="https://api.openai.com/v1/realtime/calls",
+        calls_url=token.calls_url,
+        kind=token.kind,
         client_commits=token.client_commits,
+        target_language=meeting.target_language.value if token.kind == "translation" else None,
     )
 
 

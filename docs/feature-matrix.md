@@ -48,6 +48,7 @@ endpoint) · **Admin approval** = works only after tenant/admin approval · **No
 | Google Meet | Live transcript / live audio | **Not supported** (Media API preview, no transcripts) | `test_live_never_available_for_teams_and_meet_even_with_all_scopes` |
 | WS2 | Real-provider verification (any platform) | **Blocked** — no tenant/account credentials | [`integrations/`](integrations/) |
 | Live audio | Capture from this computer (microphones, system/tab audio) → VAD → speech-to-text with speaker separation → live translation | **Tested** with MOCK STT + mocked OpenAI HTTP; browser E2E with fake microphone · **not verified against real OpenAI** | `test_audio_capture.py`, `audio.test.ts`, `e2e/audio-capture.spec.ts`, [audio-capture.md](audio-capture.md) |
+| Live audio | Live interpretation (`gpt-realtime-translate`): translated words stream while speaking, stored with OpenAI's translation | **Tested** with mocked OpenAI HTTP + fake WebRTC peer · **not verified against real OpenAI** · no glossary, no in-source diarization (OpenAI limits) | `test_interpret_*`, `translation-events.test.ts`, `e2e/audio-streaming.spec.ts` |
 | Live audio | System audio via screen share on a real Windows machine | Implemented · **not automated** (browser picker) | manual |
 | Later | Auto-join bots, outbound voice, Jira/ADO/SharePoint | **Deferred** | backlog |
 
