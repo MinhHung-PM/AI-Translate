@@ -26,6 +26,7 @@ interface SourceStats {
   queued: number;
   sent: number;
   errors: number;
+  echoes: number;
   lastError: string | null;
 }
 
@@ -203,6 +204,7 @@ export function AudioCapturePanel({
       try {
         const r = await api.post<AudioChunkResult>(`/audio-sessions/${sid}/chunks`, fd);
         c.sent += 1;
+        c.echoes += r.echoes ?? 0;
         c.lastError = null;
         if (r.note) setNote(r.note);
         if (r.entries.length) onChanged(); // refresh the live feed now instead of at the next poll
@@ -247,6 +249,7 @@ export function AudioCapturePanel({
         });
         if (c) {
           c.sent += 1;
+          c.echoes += r.echoes ?? 0;
           c.lastError = null;
         }
         if (r.note) setNote(r.note);
@@ -309,7 +312,7 @@ export function AudioCapturePanel({
         const stream = p.stream ?? (await openMicrophone(p.deviceId!));
         queues.current.set(p.id, []);
         seqs.current.set(p.id, 0);
-        counters.current.set(p.id, { level: 0, queued: 0, sent: 0, errors: 0, lastError: null });
+        counters.current.set(p.id, { level: 0, queued: 0, sent: 0, errors: 0, echoes: 0, lastError: null });
         // In streaming mode the local segmenter only drives the level meter.
         const cap = new SourceCapture(stream, (u) => {
           if (streaming) return;
@@ -488,6 +491,7 @@ export function AudioCapturePanel({
                     <span className="text-xs text-muted">
                       {t.audio.sent}: <b data-testid={`sent-${p.id}`}>{s?.sent ?? 0}</b> · {t.audio.queued}: {s?.queued ?? 0}
                       {s?.errors ? ` · ${t.audio.errors}: ${s.errors}` : ""}
+                      {s?.echoes ? ` · ${t.audio.echoes}: ${s.echoes}` : ""}
                     </span>
                     {conn[p.id] && <Badge tone={conn[p.id] === "connected" ? "success" : conn[p.id] === "failed" ? "danger" : "warning"}>{t.audio.conn[conn[p.id]]}</Badge>}
                     {s?.lastError && <span className="text-xs text-red-700">{s.lastError}</span>}
@@ -509,6 +513,7 @@ export function AudioCapturePanel({
                   ))}
               </div>
             )}
+            {Object.values(stats).some((x) => x.echoes > 0) && <Alert tone="info">{t.audio.echoTipLive}</Alert>}
             {lagging && <Alert tone="warning">{t.audio.lag}</Alert>}
             <Button variant="danger" onClick={() => void stop()} loading={busy} data-testid="stop-audio">
               {t.audio.stop}

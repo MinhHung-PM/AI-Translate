@@ -64,7 +64,7 @@ test("Streaming captions: interim words appear while speaking, final sentence is
             send({ type: "conversation.item.input_audio_transcription.delta", item_id: "item_A", delta: w });
             await wait(250);
           }
-          await wait(1500); // give the test time to observe the interim caption
+          await wait(5000); // give the test time to observe the interim caption (slow CI machines)
           send({ type: "input_audio_buffer.speech_stopped", item_id: "item_A", audio_end_ms: 2900 });
           send({ type: "conversation.item.input_audio_transcription.completed", item_id: "item_A", transcript: "Xin chào, tôi tên là Hùng." });
         };
@@ -82,6 +82,11 @@ test("Streaming captions: interim words appear while speaking, final sentence is
     await route.fulfill({ status: 201, contentType: "application/sdp", body: answer });
   });
 
+  // Slow server: live-feed polls take 7 s. Interim words must still show immediately.
+  await page.route(/\/api\/v1\/meetings\/[^/]+\/live(\?.*)?$/, async (route) => {
+    await new Promise((r) => setTimeout(r, 7000));
+    await route.continue().catch(() => undefined);
+  });
   await tid(page, "unlock-mics").click();
   await tid(page, "mic-list").getByRole("checkbox").first().check();
   await tid(page, "audio-consent").check();

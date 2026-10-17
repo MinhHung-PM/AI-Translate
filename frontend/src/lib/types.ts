@@ -532,4 +532,6 @@ export interface AudioChunkResult {
   entries: TranscriptEntry[];
   duplicate: boolean;
   note: string | null;
+  /** Utterances dropped because another source had already captured the same speech. */
+  echoes?: number;
 }

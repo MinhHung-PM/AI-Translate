@@ -500,12 +500,29 @@ def test_streaming_segments_are_stored_translated_and_idempotent(pm, member, db,
     assert pm.post(f"/audio-sessions/{sid}/segments", json=seg).json()["duplicate"] is True
     # Meeting audio: provider speaker labels map to stable session speakers; none → unattributed.
     a = pm.post(
-        f"/audio-sessions/{sid}/segments", json={**seg, "source_id": "meeting", "item_id": "i2", "speaker": "spk_1"}
+        f"/audio-sessions/{sid}/segments",
+        json={
+            **seg,
+            "source_id": "meeting",
+            "item_id": "i2",
+            "speaker": "spk_1",
+            "text": "Chúng ta bắt đầu cuộc họp nhé.",
+        },
     ).json()["entries"][0]
     b = pm.post(
-        f"/audio-sessions/{sid}/segments", json={**seg, "source_id": "meeting", "item_id": "i3", "speaker": "spk_1"}
+        f"/audio-sessions/{sid}/segments",
+        json={
+            **seg,
+            "source_id": "meeting",
+            "item_id": "i3",
+            "speaker": "spk_1",
+            "text": "Hôm nay bàn về kế hoạch phát hành.",
+        },
     ).json()["entries"][0]
-    c = pm.post(f"/audio-sessions/{sid}/segments", json={**seg, "source_id": "meeting", "item_id": "i4"}).json()
+    c = pm.post(
+        f"/audio-sessions/{sid}/segments",
+        json={**seg, "source_id": "meeting", "item_id": "i4", "text": "Ai sẽ chuẩn bị tài liệu thiết kế?"},
+    ).json()
     assert a["speaker_label"] == b["speaker_label"] == "Người 1"
     assert c["entries"][0]["speaker_label"] is None
     usage = db.scalars(select(UsageRecord).where(UsageRecord.operation == "speech_to_text")).all()
@@ -534,3 +551,51 @@ def test_streaming_token_errors_are_safe(pm, realtime, monkeypatch):
     )
     r = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"})
     assert r.status_code == 502 and OPENAI_KEY not in r.text and "rejected" in r.json()["error"]["message"]
+
+
+def test_same_speech_captured_by_two_sources_is_stored_once(pm, realtime):
+    """Meeting audio + a microphone that hears the speakers (or the same tab
+    shared twice) produce near-identical transcripts: keep only the first."""
+    meeting = create_meeting(pm)
+    body = {
+        "sources": [
+            {"id": "meeting", "kind": "system", "label": "Âm thanh cuộc họp"},
+            {"id": "meeting-2", "kind": "tab", "label": "Tab họp"},
+        ],
+        "consent_confirmed": True,
+    }
+    sid = pm.post(f"/meetings/{meeting['id']}/audio-sessions", json=body).json()["session"]["id"]
+    first = {
+        "source_id": "meeting",
+        "item_id": "a1",
+        "offset_ms": 16000,
+        "duration_ms": 4000,
+        "text": "富士山が噴火したとき、どのように避難するか、静岡県や山梨県、神奈川県などが新しい計画を発表しました。",
+    }
+    echo = {
+        **first,
+        "source_id": "meeting-2",
+        "item_id": "b1",
+        "offset_ms": 16300,
+        "text": "富士山が噴火したときどのように避難するか、静岡県や山梨県、神奈川県などが新しい計画を発表しました。",
+    }
+    assert len(pm.post(f"/audio-sessions/{sid}/segments", json=first).json()["entries"]) == 1
+    r = pm.post(f"/audio-sessions/{sid}/segments", json=echo).json()
+    assert r["entries"] == [] and r["echoes"] == 1
+    # "3つ" vs "三つ": numerals normalised.
+    a = {**first, "item_id": "a2", "offset_ms": 27000, "text": "避難が必要な人は、3つの県に住んでいる約80万人です。"}
+    b = {**echo, "item_id": "b2", "offset_ms": 27100, "text": "避難が必要な人は、三つの県に住んでいる約80万人です。"}
+    assert len(pm.post(f"/audio-sessions/{sid}/segments", json=a).json()["entries"]) == 1
+    assert pm.post(f"/audio-sessions/{sid}/segments", json=b).json()["echoes"] == 1
+    # Same text much later, or from the same source (someone repeating themselves), is kept.
+    later = {**b, "item_id": "b3", "offset_ms": 60000}
+    assert len(pm.post(f"/audio-sessions/{sid}/segments", json=later).json()["entries"]) == 1
+    again = {**a, "item_id": "a3", "offset_ms": 27500}
+    assert len(pm.post(f"/audio-sessions/{sid}/segments", json=again).json()["entries"]) == 1
+    # Short replies ("はい") are never treated as echoes.
+    yes1 = {**first, "item_id": "a4", "offset_ms": 70000, "text": "はい。"}
+    yes2 = {**echo, "item_id": "b4", "offset_ms": 70100, "text": "はい。"}
+    pm.post(f"/audio-sessions/{sid}/segments", json=yes1)
+    assert len(pm.post(f"/audio-sessions/{sid}/segments", json=yes2).json()["entries"]) == 1
+    feed = pm.get(f"/meetings/{meeting['id']}/live").json()["entries"]
+    assert len(feed) == 6

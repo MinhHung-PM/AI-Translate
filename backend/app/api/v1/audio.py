@@ -48,6 +48,7 @@ class ChunkOut(BaseModel):
     entries: list[EntryOut]
     duplicate: bool
     note: str | None
+    echoes: int = 0  # utterances dropped as duplicates of another source
 
 
 class RealtimeTokenIn(BaseModel):
@@ -155,6 +156,7 @@ def post_audio_chunk(
         entries=[entry_out(e, meeting.target_language) for e in outcome.entries],
         duplicate=outcome.duplicate,
         note=outcome.note,
+        echoes=outcome.echoes,
     )
 
 
@@ -191,6 +193,7 @@ def post_realtime_segment(session_id: uuid.UUID, body: audio.RealtimeSegmentIn, 
         entries=[entry_out(e, meeting.target_language) for e in outcome.entries],
         duplicate=outcome.duplicate,
         note=outcome.note,
+        echoes=outcome.echoes,
     )
 
 

@@ -64,6 +64,14 @@ Máy chủ
 * Nhãn ngôn ngữ của mỗi câu là ngôn ngữ model thực sự nhận ra (không gán theo mặc định của cuộc họp).
 * Ghi chú "Lưu ý mơ hồ" của bản dịch luôn viết bằng tiếng Việt.
 
+### Chống trùng câu khi nhiều nguồn cùng thu một âm thanh
+
+Khi chọn cả âm thanh cuộc họp và micro (micro nghe được loa), Stereo Mix, hoặc cùng một tab hai lần, cùng
+một câu được nhận dạng hai lần với chữ hơi khác nhau ("3つ" / "三つ", dấu câu). Máy chủ so sánh mỗi câu mới
+với các câu của **nguồn khác** trong ±6 giây (chuẩn hóa NFKC, chữ số Kanji, bỏ dấu câu; độ giống ≥ 0,8) và bỏ
+bản trùng — màn hình hiển thị "Bỏ trùng: N". Câu lặp lại trên **cùng một nguồn** (người nói nhắc lại) và câu
+rất ngắn ("はい", "ok") không bị coi là trùng.
+
 ### Độ trễ
 
 Thời gian người nói dứt câu (VAD chờ 0,65 s im lặng) + nhận dạng (thường 1–3 s, ước tính) + dịch (1–2 s) ≈

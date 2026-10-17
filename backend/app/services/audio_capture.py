@@ -74,6 +74,60 @@ class ChunkOutcome:
     entries: list[TranscriptEntry] = field(default_factory=list)
     duplicate: bool = False
     note: str | None = None
+    echoes: int = 0  # utterances skipped because another source already captured them
+
+
+# ---- cross-source duplicate ("echo") suppression -----------------------------
+# The same speech is often captured twice: meeting audio + a microphone that hears
+# the speakers, a "Stereo Mix" device, or the same tab shared twice. Each capture
+# is recognised independently, so the texts differ slightly ("3つ" vs "三つ",
+# punctuation). A new utterance is dropped when a near-identical one was stored
+# for the same session within ECHO_WINDOW_MS.
+
+ECHO_WINDOW_MS = 6000
+ECHO_SIMILARITY = 0.8
+_KANJI_DIGITS = str.maketrans("〇一二三四五六七八九", "0123456789")
+
+
+def _normalize_for_echo(value: str) -> str:
+    import unicodedata
+
+    v = unicodedata.normalize("NFKC", value).lower().translate(_KANJI_DIGITS)
+    return "".join(ch for ch in v if ch.isalnum())
+
+
+def _lock_session_for_echo_check(db: Session, live: LiveSession) -> None:
+    """Serialize "check for echo + store" across all sources of a session, so two
+    sources delivering the same sentence at the same moment cannot both pass."""
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"{live.id}:echo"})
+
+
+def _is_echo(
+    db: Session, live: LiveSession, meeting: Meeting, source_id: str, text_value: str, start_ms: int | None
+) -> bool:
+    """Only compares with *other* sources: a person repeating themselves on the
+    same source is real speech, not an echo."""
+    import difflib
+
+    norm = _normalize_for_echo(text_value)
+    if len(norm) < 4:
+        return False  # "はい" / "ok" are legitimately repeated by different people
+    q = select(TranscriptEntry.original_text).where(
+        TranscriptEntry.meeting_id == meeting.id,
+        TranscriptEntry.source_metadata["live_session_id"].astext == str(live.id),
+        TranscriptEntry.source_metadata["audio_source_id"].astext != source_id,
+    )
+    if start_ms is not None:
+        q = q.where(
+            TranscriptEntry.start_ms >= start_ms - ECHO_WINDOW_MS,
+            TranscriptEntry.start_ms <= start_ms + ECHO_WINDOW_MS,
+        )
+    recent = db.scalars(q.order_by(TranscriptEntry.sequence.desc()).limit(20)).all()
+    for other in recent:
+        o = _normalize_for_echo(other)
+        if o and difflib.SequenceMatcher(None, norm, o, autojunk=False).ratio() >= ECHO_SIMILARITY:
+            return True
+    return False
 
 
 # ---- providers ---------------------------------------------------------------
@@ -405,7 +459,11 @@ def process_chunk(
     mapping = _assign_speakers(db, live, source_id, audio, result, known) if diarize else {}
     now = utcnow()
     outcome = ChunkOutcome()
+    _lock_session_for_echo_check(db, live)
     for i, seg in enumerate(result.segments):
+        if not stt.is_mock and _is_echo(db, live, meeting, source_id, seg.text, offset_ms + int(seg.start_s * 1000)):
+            outcome.echoes += 1
+            continue
         profile = mapping.get(seg.speaker) if seg.speaker else None
         speaker_name = source["label"] if not diarize else (profile.display_name if profile else None)
         if profile is not None:
@@ -602,6 +660,11 @@ def ingest_realtime_segment(
     ).all()
     if existing:
         return ChunkOutcome(entries=list(existing), duplicate=True)
+
+    _lock_session_for_echo_check(db, live)
+    if _is_echo(db, live, meeting, body.source_id, text_value, body.offset_ms):
+        db.commit()  # release the advisory lock
+        return ChunkOutcome(duplicate=True, echoes=1)
 
     settings = get_settings()
     model = body.model or settings.stt_realtime_model

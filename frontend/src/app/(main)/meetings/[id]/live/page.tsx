@@ -229,6 +229,11 @@ export default function LivePage() {
       )}
       {!canStart && !audioMode && !feed?.session && meeting.entry_count > 0 && <Alert tone="info">{t.live.requiresEmpty}</Alert>}
 
+      {/* Words being spoken show at once, even before the first live-feed poll returns. */}
+      {!(feed?.session && isAudio) && Object.keys(interim).length > 0 && (
+        <LiveCaptionFeed entries={[]} target={meeting.target_language} interim={Object.values(interim)} selfLabels={[]} />
+      )}
+
       {feed?.session && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white p-3">
@@ -285,7 +290,7 @@ export default function LivePage() {
             <LiveCaptionFeed
               entries={feed.entries}
               target={meeting.target_language}
-              interim={active ? Object.values(interim) : []}
+              interim={Object.values(interim)}
               selfLabels={(feed.session.capture_config?.sources ?? []).filter((s) => s.kind === "microphone").map((s) => s.label)}
             />
           ) : feed.entries.length === 0 ? (
