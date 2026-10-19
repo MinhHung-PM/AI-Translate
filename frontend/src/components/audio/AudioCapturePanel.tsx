@@ -4,14 +4,16 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Alert, Badge, Button, Card, Checkbox, Input } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { RealtimeCaptionSource, type CaptionState, type RealtimeToken } from "@/lib/audio/realtime";
+import { SonioxCaptionSource } from "@/lib/audio/soniox";
 import type { FinalUtterance } from "@/lib/audio/realtime-events";
 import { denoise, type DenoisedSource, type NoiseLevel } from "@/lib/audio/denoise";
 import { SourceCapture, listMicrophones, openDisplayAudio, openMicrophone, unlockDeviceLabels, type SourceKind } from "@/lib/audio/capture";
 import type { Utterance } from "@/lib/audio/segmenter";
 import { encodeWav } from "@/lib/audio/wav";
 import { errorMessage } from "@/lib/format";
+import { useApi } from "@/lib/hooks";
 import { t } from "@/lib/i18n";
-import type { AudioChunkResult, AudioSession, AudioSpeaker, Language, LiveSession } from "@/lib/types";
+import type { AudioChunkResult, AudioSession, AudioSpeaker, Language, LiveSession, ProviderConfig } from "@/lib/types";
 
 interface PickedSource {
   id: string;
@@ -91,6 +93,11 @@ export function AudioCapturePanel({
   // interpret = OpenAI live interpretation (translated words stream in); the rest are caption modes.
   const [latency, setLatency] = useState<"interpret" | "fast" | "balanced" | "accurate">("interpret");
   const [playVoice, setPlayVoice] = useState(false);
+  // Live speech provider: OpenAI Realtime (WebRTC) or Soniox (WebSocket; key added in AI Settings).
+  const [sttProvider, setSttProvider] = useState<"openai" | "soniox">("openai");
+  const providerConfigs = useApi<ProviderConfig[]>("/providers/configs");
+  const sonioxReady = !!providerConfigs.data?.some((c) => c.provider === "soniox" && c.has_usable_key);
+  const soniox = streamingWanted && sttProvider === "soniox";
   const voices = useRef(new Map<string, HTMLAudioElement>());
   const [gates, setGates] = useState<Record<string, boolean>>({});
   const [interim, setInterim] = useState<Record<string, { text: string; translation?: string }>>({});
@@ -101,7 +108,7 @@ export function AudioCapturePanel({
   const seqs = useRef(new Map<string, number>());
   const pumping = useRef(new Set<string>());
   const counters = useRef(new Map<string, SourceStats>());
-  const realtime = useRef(new Map<string, RealtimeCaptionSource>());
+  const realtime = useRef(new Map<string, RealtimeCaptionSource | SonioxCaptionSource>());
   const cleaners = useRef(new Map<string, DenoisedSource>());
   const finals = useRef(new Map<string, Promise<void>>());
 
@@ -281,29 +288,29 @@ export function AudioCapturePanel({
     finals.current.set(sourceId, next);
   }
 
-  async function startStreaming(sid: string, p: PickedSource, stream: MediaStream, t0: number) {
+  async function startStreaming(sid: string, p: PickedSource, stream: MediaStream, cap: SourceCapture, t0: number, provider: string) {
     const getToken = () => api.post<RealtimeToken>(`/audio-sessions/${sid}/realtime-token`, { source_id: p.id });
-    let rt: RealtimeCaptionSource | null = null;
-    rt = new RealtimeCaptionSource(
-      stream,
-      getToken,
-      {
-        onInterim: (_itemId, text, translation) => {
-          setInterim((prev) => ({ ...prev, [p.id]: { text, translation } }));
-          onInterim?.(p.id, p.label, text, translation);
-        },
-        onFinal: (u) => postFinal(sid, p.id, u, rt?.model ?? ""),
-        onError: (msg) => {
-          const c = counters.current.get(p.id);
-          if (c) {
-            c.errors += 1;
-            c.lastError = msg;
-          }
-        },
+    let rt: RealtimeCaptionSource | SonioxCaptionSource | null = null;
+    const handlers = {
+      onInterim: (_itemId: string, text: string, translation?: string) => {
+        setInterim((prev) => ({ ...prev, [p.id]: { text, translation } }));
+        onInterim?.(p.id, p.label, text, translation);
       },
-      () => performance.now() - t0,
-      (state) => setConn((prev) => ({ ...prev, [p.id]: state })),
-    );
+      onFinal: (u: FinalUtterance) => postFinal(sid, p.id, u, rt?.model ?? ""),
+      onError: (msg: string) => {
+        const c = counters.current.get(p.id);
+        if (c) {
+          c.errors += 1;
+          c.lastError = msg;
+        }
+      },
+    };
+    const clock = () => performance.now() - t0;
+    const onState = (state: CaptionState) => setConn((prev) => ({ ...prev, [p.id]: state }));
+    rt =
+      provider === "soniox"
+        ? new SonioxCaptionSource(cap, getToken, handlers, clock, onState, latency === "interpret")
+        : new RealtimeCaptionSource(stream, getToken, handlers, clock, onState);
     if (playVoice) {
       rt.onRemoteAudio = (remote) => {
         const el = voices.current.get(p.id) ?? new Audio();
@@ -330,6 +337,7 @@ export function AudioCapturePanel({
         mode: !streamingWanted ? "chunked" : latency === "interpret" ? "interpret" : "streaming",
         noise_suppression: noise,
         caption_latency: latency === "interpret" ? "balanced" : latency,
+        stt_provider: soniox ? "soniox" : "openai",
         consent_confirmed: consent,
       });
       const sid = res.session.id;
@@ -354,7 +362,7 @@ export function AudioCapturePanel({
         });
         await cap.start(t0);
         captures.current.set(p.id, cap);
-        if (streaming) await startStreaming(sid, p, stream, t0);
+        if (streaming) await startStreaming(sid, p, stream, cap, t0, res.session.capture_config?.stt_provider ?? "openai");
       }
       setSessionId(sid);
       setSpeakers(res.speakers);
@@ -377,7 +385,8 @@ export function AudioCapturePanel({
     setBusy(true);
     const sid = sessionId;
     try {
-      realtime.current.forEach((r) => r.stop());
+      // Soniox sends its last tokens after the end of audio: wait for them (bounded).
+      await Promise.all([...realtime.current.values()].map((r) => r.stop()));
       realtime.current.clear();
       voices.current.forEach((el) => {
         el.pause();
@@ -493,7 +502,7 @@ export function AudioCapturePanel({
 
             <section>
               <h3 className="mb-1 font-medium">{t.audio.languages}</h3>
-              {streamingWanted && latency === "interpret" ? (
+              {streamingWanted && latency === "interpret" && !soniox ? (
                 <p className="text-xs text-muted" data-testid="audio-languages-auto">{t.audio.languageDetect.interpret}</p>
               ) : (
                 <>
@@ -558,9 +567,34 @@ export function AudioCapturePanel({
               <Checkbox label={t.audio.streaming} checked={streamingWanted} onChange={(e) => setStreamingWanted(e.target.checked)} data-testid="audio-streaming" />
               <p className="-mt-1 ml-6 text-xs text-muted">{streamingWanted ? t.audio.streamingHint : t.audio.chunkedHint}</p>
               {streamingWanted && (
+                <div className="ml-6 flex flex-wrap items-center gap-2" role="radiogroup" aria-label={t.audio.provider.title} data-testid="stt-provider">
+                  <span className="text-xs font-bold">{t.audio.provider.title}:</span>
+                  {(["openai", "soniox"] as const).map((pv) => (
+                    <button
+                      key={pv}
+                      type="button"
+                      role="radio"
+                      aria-checked={sttProvider === pv}
+                      disabled={pv === "soniox" && !sonioxReady}
+                      onClick={() => {
+                        setSttProvider(pv);
+                        if (pv === "soniox" && latency !== "interpret") setLatency("balanced");
+                      }}
+                      className={
+                        "rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 " +
+                        (sttProvider === pv ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
+                      }
+                    >
+                      {t.audio.provider[pv]}
+                    </button>
+                  ))}
+                  <span className="w-full text-xs text-muted">{sonioxReady ? t.audio.provider.hint[sttProvider] : t.audio.provider.needKey}</span>
+                </div>
+              )}
+              {streamingWanted && (
                 <div className="ml-6 flex flex-wrap items-center gap-2" role="radiogroup" aria-label={t.audio.latency.title} data-testid="caption-latency">
                   <span className="text-xs font-bold">{t.audio.latency.title}:</span>
-                  {(["interpret", "fast", "balanced", "accurate"] as const).map((lv) => (
+                  {(soniox ? (["interpret", "balanced"] as const) : (["interpret", "fast", "balanced", "accurate"] as const)).map((lv) => (
                     <button
                       key={lv}
                       type="button"
@@ -572,11 +606,13 @@ export function AudioCapturePanel({
                         (latency === lv ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
                       }
                     >
-                      {t.audio.latency[lv]}
+                      {soniox && lv === "balanced" ? t.audio.latency.sonioxCaptions : t.audio.latency[lv]}
                     </button>
                   ))}
-                  <span className="w-full text-xs text-muted">{t.audio.latency.hint[latency]}</span>
-                  {latency === "interpret" && (
+                  <span className="w-full text-xs text-muted">
+                    {soniox ? (latency === "interpret" ? t.audio.latency.hint.sonioxInterpret : t.audio.latency.hint.sonioxCaptions) : t.audio.latency.hint[latency]}
+                  </span>
+                  {latency === "interpret" && !soniox && (
                     <Checkbox label={t.audio.playVoice} checked={playVoice} onChange={(e) => setPlayVoice(e.target.checked)} data-testid="play-voice" />
                   )}
                 </div>

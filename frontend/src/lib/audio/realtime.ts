@@ -11,8 +11,10 @@ export interface RealtimeToken {
   /** No server VAD: the browser commits each utterance (input_audio_buffer.commit). */
   client_commits?: boolean;
   /** "translation": live interpretation (gpt-realtime-translate) — translated words stream in. */
-  kind?: "transcription" | "translation";
+  kind?: "transcription" | "translation" | "soniox";
   target_language?: string | null;
+  /** Soniox: config sent as the first WebSocket message (the browser adds the temporary key). */
+  session_config?: Record<string, unknown> & { translation?: { target_language: string } };
 }
 
 export type CaptionState = "connecting" | "connected" | "reconnecting" | "failed" | "closed";

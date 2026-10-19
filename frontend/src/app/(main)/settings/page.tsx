@@ -27,6 +27,7 @@ export default function SettingsPage() {
 
   const provider = selected || configs.data?.find((c) => c.is_default)?.provider || settings.data?.providers[0]?.key || "";
   const info = useMemo(() => settings.data?.providers.find((p) => p.key === provider), [settings.data, provider]);
+  const infoSpeechOnly = !!info && speechOnly(info.capabilities);
   const existing = configs.data?.find((c) => c.provider === provider);
 
   const savedModel = existing?.model;
@@ -59,7 +60,7 @@ export default function SettingsPage() {
         base_url: info.allow_custom_base_url ? baseUrl || null : null,
         api_key: apiKey ? apiKey : null,
         remember,
-        make_default: makeDefault,
+        make_default: makeDefault && !infoSpeechOnly,
       });
       setApiKey("");
       setEdits({});
@@ -152,7 +153,11 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted">{s.remember_key_supported ? t.settings.sessionOnly : t.settings.rememberDisabled}</p>
                   </>
                 )}
-                <Checkbox label={t.settings.makeDefault} checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} />
+                {infoSpeechOnly ? (
+                  <Alert tone="info">{t.settings.speechOnly}</Alert>
+                ) : (
+                  <Checkbox label={t.settings.makeDefault} checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} />
+                )}
                 <div>
                   <p className="mb-1 text-xs font-medium text-gray-700">{t.settings.capabilities}</p>
                   <div className="flex flex-wrap gap-1">
@@ -223,7 +228,7 @@ export default function SettingsPage() {
                         <Button size="sm" onClick={() => void act(`test-${c.id}`, () => api.post(`/providers/configs/${c.id}/test`))} loading={busy === `test-${c.id}`}>
                           {t.settings.test}
                         </Button>
-                        {!c.is_default && (
+                        {!c.is_default && !(p && speechOnly(p.capabilities)) && (
                           <Button size="sm" onClick={() => void act(`def-${c.id}`, () => api.post(`/providers/configs/${c.id}/default`))}>
                             {t.settings.makeDefault}
                           </Button>
@@ -247,4 +252,9 @@ export default function SettingsPage() {
       </div>
     </>
   );
+}
+
+/** Speech-recognition-only providers (Soniox) never translate or write memos, so they cannot be the default. */
+function speechOnly(capabilities: string[]): boolean {
+  return !capabilities.includes("translation") && !capabilities.includes("memo_generation");
 }

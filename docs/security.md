@@ -134,6 +134,12 @@ rate-limited. Audio and voice references are sent to OpenAI with the user's own 
 Streaming captions: the server mints a 10-minute OpenAI Realtime **client secret** per source; the browser
 uses only that ephemeral key to open a WebRTC connection to OpenAI (CSP `connect-src` adds
 `https://api.openai.com`). The user's API key never reaches the browser; audio flows browser → OpenAI.
+Soniox (optional speech provider): the user's Soniox key is stored like any provider key (encrypted,
+never returned) and can never become the default AI provider. Per source the server mints a **single-use
+temporary key** (`POST /v1/auth/temporary-api-key`, `usage_type: transcribe_websocket`, 10-minute expiry,
+session length capped by `SONIOX_MAX_SESSION_SECONDS`) and builds the session config itself (model, audio
+format, glossary context, translation target); the browser only adds the temporary key and opens
+`wss://stt-rt.soniox.com/transcribe-websocket` (CSP `connect-src` adds that host). Audio flows browser → Soniox.
 
 ## Logging
 

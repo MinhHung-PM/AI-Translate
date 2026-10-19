@@ -25,6 +25,23 @@ nhãn; muốn tách người, dùng chế độ "Theo câu"); lời nói **đã 
 bong bóng là gần đúng (hai luồng chữ độc lập). Chi phí phút âm thanh của `gpt-realtime-translate` chưa có trong
 `catalog.json` → ghi số giây, chưa ước tính tiền.
 
+## Nhà cung cấp Soniox (tùy chọn, chạy song song với OpenAI)
+
+**Xác minh hợp đồng:** 2026-10-19, từ SDK chính thức của Soniox (`soniox` 2.10.0 trên PyPI — kèm OpenAPI của
+API, và `@soniox/speech-to-text-web` 1.4.0). **Chưa** chạy với Soniox thật (không có API key trong môi trường
+xây dựng). Giá theo trang của Soniox (06/2026): ≈ $0,12/giờ phụ đề, ≈ $0,18/giờ kèm dịch — tính theo token
+nên con số thực tế có thể lệch.
+
+| | |
+|---|---|
+| Cài đặt | **Cài đặt AI** → thêm **Soniox** + API key. Key cần quyền **Temporary API keys**. Soniox chỉ dùng cho nhận dạng giọng nói — không thể đặt làm nhà cung cấp mặc định (dịch văn bản, biên bản vẫn dùng nhà cung cấp mặc định). "Kiểm tra kết nối" tạo thử một khóa tạm 60 s, không gửi âm thanh |
+| Cách chạy | Màn hình Dịch trực tiếp → **Nhà cung cấp: Soniox**. Máy chủ tạo **khóa tạm dùng một lần** (`/v1/auth/temporary-api-key`) và cấu hình phiên; trình duyệt mở `wss://stt-rt.soniox.com/transcribe-websocket`, gửi cấu hình + khóa tạm, rồi gửi âm thanh PCM16 16 kHz (lấy từ cùng chuỗi lọc tạp âm như các chế độ khác) |
+| Chế độ | **Phiên dịch trực tiếp**: `translation: one_way` sang ngôn ngữ đích của cuộc họp — lời gốc + bản dịch chạy từng chữ, câu lưu kèm bản dịch của Soniox. **Phụ đề + dịch bằng AI của bạn**: Soniox chỉ nhận dạng, câu hoàn chỉnh dịch bằng nhà cung cấp mặc định |
+| Thuật ngữ | Tên người tham gia + thuật ngữ Glossary → `context.terms` (nhận dạng); cặp thuật ngữ Glossary có ngôn ngữ đích của cuộc họp → `context.translation_terms` (dịch); tên dự án → `context.general.domain` |
+| Ngôn ngữ / người nói | Tự nhận diện ngôn ngữ (`enable_language_identification`); "Chỉ định ngôn ngữ" → `language_hints`. Tách người nói (`enable_speaker_diarization`) cho nguồn âm thanh cuộc họp; micro "một người nói" thì không |
+| Chốt câu | `enable_endpoint_detection`: Soniox gửi token `<end>` khi người nói dứt câu; câu được chốt khi đã có `<end>`, không còn token tạm và (khi dịch) đã có bản dịch. Lưới an toàn: 4 s không có token mới |
+| Dừng | Trình duyệt gửi khung rỗng (hết âm thanh), chờ `finished: true` (tối đa 4 s) để không mất chữ cuối |
+
 ## Các chế độ phụ đề
 
 | | **Chữ chạy theo lời nói** (mặc định) | **Theo câu** |
@@ -35,7 +52,7 @@ bong bóng là gần đúng (hai luồng chữ độc lập). Chi phí phút âm
 | Bảo mật | Máy chủ cấp **client secret tạm thời** (hết hạn 10 phút) — API key không rời máy chủ; âm thanh đi thẳng trình duyệt → OpenAI | Âm thanh đi qua máy chủ Memo Hub |
 | MOCK (không có OpenAI key) | Không hỗ trợ → tự chuyển sang "Theo câu" | Có |
 
-Chế độ streaming: CSP `connect-src` cho phép thêm `https://api.openai.com` (chỉ để gửi WebRTC offer).
+Chế độ streaming: CSP `connect-src` cho phép thêm `https://api.openai.com` (chỉ để gửi WebRTC offer) và `wss://stt-rt.soniox.com` (Soniox).
 Kiểm chứng: `e2e/audio-streaming.spec.ts` dùng một **peer WebRTC giả** đóng vai OpenAI (bắt tay thật trong
 Chromium, sự kiện delta/completed theo đặc tả); chưa kiểm chứng với OpenAI thật.
 
@@ -137,6 +154,7 @@ Thời gian người nói dứt câu (VAD chờ 0,65 s im lặng) + nhận dạn
 | `AUDIO_MIN_RMS` | `0.004` | ngưỡng âm lượng tối thiểu để gửi đi nhận dạng |
 | `STT_REALTIME_MODEL` / `STT_REALTIME_FALLBACK_MODEL` | `gpt-live-transcribe` / `gpt-4o-transcribe` | chế độ chữ chạy |
 | `STT_REALTIME_TOKEN_TTL_SECONDS` | `600` | thời hạn client secret tạm thời |
+| `SONIOX_MODEL` / `SONIOX_MAX_SESSION_SECONDS` | `stt-rt-v5` / `14400` | model Soniox thời gian thực; thời lượng tối đa mỗi kết nối |
 | `STT_INTERPRET_MODEL` / `STT_INTERPRET_INPUT_TRANSCRIPTION_MODEL` | `gpt-realtime-translate` / `gpt-realtime-whisper` | phiên dịch trực tiếp; để trống model thứ hai = không lấy lời gốc |
 | `STT_TIMEOUT_SECONDS` | `60` | |
 | `AUDIO_CHUNK_MAX_SECONDS` / `AUDIO_CHUNK_MAX_BYTES` | `30` / `2000000` | giới hạn mỗi đoạn |

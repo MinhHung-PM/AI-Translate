@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Literal
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
 from app.api.deps import DB, Auth, AuthContext
 from app.api.v1.transcripts import entry_out
+from app.audio.soniox import SonioxToken
 from app.core.config import get_settings
 from app.core.errors import Forbidden, NotFound, PayloadTooLarge
 from app.core.rate_limit import rate_limiter
@@ -63,8 +65,11 @@ class RealtimeTokenOut(BaseModel):
     client_commits: bool = False
     # "translation": OpenAI interprets live (gpt-realtime-translate); the browser
     # posts each finished sentence with its translation.
-    kind: Literal["transcription", "translation"] = "transcription"
+    # "soniox": calls_url is Soniox's WebSocket; the browser sends ``session_config``
+    # (+ the temporary key as api_key) as the first message, then 16 kHz PCM16 audio.
+    kind: Literal["transcription", "translation", "soniox"] = "transcription"
     target_language: str | None = None
+    session_config: dict[str, Any] | None = None
 
 
 class SpeakerRename(BaseModel):
@@ -165,6 +170,13 @@ def post_audio_chunk(
     )
 
 
+def _epoch(iso: str) -> int:
+    try:
+        return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return 0
+
+
 @router.post("/audio-sessions/{session_id}/realtime-token", response_model=RealtimeTokenOut)
 def create_realtime_token(session_id: uuid.UUID, body: RealtimeTokenIn, auth: AudioAuth, db: DB) -> RealtimeTokenOut:
     """Short-lived OpenAI client secret for one source's streaming caption
@@ -175,6 +187,16 @@ def create_realtime_token(session_id: uuid.UUID, body: RealtimeTokenIn, auth: Au
     token = audio.realtime_token(
         db, live=live, meeting=meeting, user_id=auth.user.id, session_id=auth.session.id, source_id=body.source_id
     )
+    if isinstance(token, SonioxToken):
+        return RealtimeTokenOut(
+            client_secret=token.value,
+            expires_at=_epoch(token.expires_at),
+            model=token.model,
+            calls_url=token.websocket_url,
+            kind="soniox",
+            target_language=(token.config.get("translation") or {}).get("target_language"),
+            session_config=token.config,
+        )
     return RealtimeTokenOut(
         client_secret=token.value,
         expires_at=token.expires_at,

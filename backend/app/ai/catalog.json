@@ -74,6 +74,16 @@
           "id": "gpt-transcribe",
           "label": "GPT Transcribe",
           "audio_per_minute": null
+        },
+        {
+          "id": "gpt-realtime-whisper",
+          "label": "GPT Realtime Whisper",
+          "audio_per_minute": 0.017
+        },
+        {
+          "id": "gpt-realtime-translate",
+          "label": "GPT Realtime Translate (+ Realtime Whisper source transcript)",
+          "audio_per_minute": 0.051
         }
       ]
     },
@@ -90,6 +100,37 @@
         "memo_generation"
       ],
       "models": []
+    },
+    {
+      "key": "soniox",
+      "display_name": "Soniox (speech recognition & live translation)",
+      "adapter": "soniox",
+      "default_base_url": "https://api.soniox.com/v1",
+      "requires_api_key": true,
+      "allow_custom_base_url": false,
+      "allow_custom_model": false,
+      "dev_only": false,
+      "capabilities": [
+        "speech_to_text"
+      ],
+      "models": [
+        {
+          "id": "stt-rt-v5",
+          "label": "Soniox real-time v5"
+        }
+      ],
+      "stt_models": [
+        {
+          "id": "stt-rt-v5",
+          "label": "Soniox real-time v5 (transcription)",
+          "audio_per_minute": 0.002
+        },
+        {
+          "id": "stt-rt-v5+translation",
+          "label": "Soniox real-time v5 + translation",
+          "audio_per_minute": 0.003
+        }
+      ]
     }
   ]
 }

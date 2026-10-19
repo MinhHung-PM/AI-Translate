@@ -140,7 +140,11 @@ def upsert_config(
             raise ValidationFailed("API key format is invalid")
         store_key(db, config, session, api_key, remember)
 
-    if make_default or not db.scalar(
+    if is_speech_only(info):
+        # Speech-recognition-only providers (Soniox) can never translate or write memos.
+        if make_default:
+            raise ValidationFailed("This provider is used only for speech recognition and cannot be the default")
+    elif make_default or not db.scalar(
         select(AIProviderConfiguration.id).where(
             AIProviderConfiguration.user_id == user.id,
             AIProviderConfiguration.is_default.is_(True),
@@ -284,6 +288,10 @@ def rotate_persistent_keys(db: Session) -> int:
 # ---- Provider factory --------------------------------------------------------
 
 _mock = MockProvider()
+
+
+def is_speech_only(info: ProviderInfo) -> bool:
+    return "translation" not in info.capabilities and "memo_generation" not in info.capabilities
 
 
 def build_ai_provider(info: ProviderInfo) -> OpenAIProvider:

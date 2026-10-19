@@ -14,7 +14,8 @@ const csp = [
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   // OpenAI Realtime: the browser POSTs its WebRTC offer with a short-lived client secret (live captions).
-  "connect-src 'self' https://api.openai.com",
+  // Soniox: live audio WebSocket opened with a single-use temporary key.
+  "connect-src 'self' https://api.openai.com wss://stt-rt.soniox.com",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",

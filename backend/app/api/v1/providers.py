@@ -10,8 +10,9 @@ from sqlalchemy import select
 from app.ai.base import ProviderError, TokenUsage
 from app.ai.catalog import get_catalog
 from app.api.deps import DB, Auth, AuthContext, ai_rate_limit
+from app.audio import soniox
 from app.core.config import get_settings
-from app.core.errors import NotFound, ProviderNotConfigured
+from app.core.errors import NotFound, ProviderNotConfigured, ValidationFailed
 from app.db.base import utcnow
 from app.models import AIProviderConfiguration
 from app.schemas.api import (
@@ -92,6 +93,9 @@ def save_config(body: ProviderConfigIn, auth: Auth, db: DB) -> ProviderConfigOut
 @router.post("/configs/{config_id}/default", response_model=ProviderConfigOut)
 def make_default(config_id: uuid.UUID, auth: Auth, db: DB) -> ProviderConfigOut:
     config = _own_config(db, auth, config_id)
+    info = get_catalog().get(config.provider)
+    if info is not None and svc.is_speech_only(info):
+        raise ValidationFailed("This provider is used only for speech recognition and cannot be the default")
     for other in db.scalars(select(AIProviderConfiguration).where(AIProviderConfiguration.user_id == auth.user.id)):
         other.is_default = other.id == config.id
     db.commit()
@@ -147,8 +151,17 @@ def test_connection(config_id: uuid.UUID, auth: TestAuth, db: DB) -> ConnectionT
         )
     else:
         try:
-            raw = svc.build_ai_provider(resolved.info).test_connection(resolved.credentials, resolved.model)
-            result = ConnectionTestOut(ok=raw.ok, message=raw.message, models=raw.models)
+            if resolved.info.adapter == "soniox":
+                # Minting a 60 s single-use temporary key proves the key and its permission; no audio is sent.
+                soniox.create_temporary_key(resolved.credentials, ttl_seconds=60, max_session_seconds=60, timeout_s=15)
+                result = ConnectionTestOut(
+                    ok=True,
+                    message="Soniox key works (temporary keys can be issued)",
+                    models=[m.id for m in resolved.info.models],
+                )
+            else:
+                raw = svc.build_ai_provider(resolved.info).test_connection(resolved.credentials, resolved.model)
+                result = ConnectionTestOut(ok=raw.ok, message=raw.message, models=raw.models)
         except ProviderError as err:
             result = ConnectionTestOut(ok=False, message=err.message)
         DbUsageMeter(db).record(

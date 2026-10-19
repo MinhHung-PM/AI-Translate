@@ -49,6 +49,7 @@ endpoint) · **Admin approval** = works only after tenant/admin approval · **No
 | WS2 | Real-provider verification (any platform) | **Blocked** — no tenant/account credentials | [`integrations/`](integrations/) |
 | Live audio | Capture from this computer (microphones, system/tab audio) → VAD → speech-to-text with speaker separation → live translation | **Tested** with MOCK STT + mocked OpenAI HTTP; browser E2E with fake microphone · **not verified against real OpenAI** | `test_audio_capture.py`, `audio.test.ts`, `e2e/audio-capture.spec.ts`, [audio-capture.md](audio-capture.md) |
 | Live audio | Live interpretation (`gpt-realtime-translate`): translated words stream while speaking, stored with OpenAI's translation | **Tested** with mocked OpenAI HTTP + fake WebRTC peer · **not verified against real OpenAI** · no glossary, no in-source diarization (OpenAI limits) | `test_interpret_*`, `translation-events.test.ts`, `e2e/audio-streaming.spec.ts` |
+| Live audio | Soniox as alternative live provider (captions or live translation over WebSocket; glossary → context terms) | **Tested** with mocked Soniox HTTP + fake WebSocket (Playwright) · **not verified against real Soniox** | `test_audio_soniox.py`, `soniox-events.test.ts`, `e2e/audio-streaming.spec.ts` |
 | Live audio | System audio via screen share on a real Windows machine | Implemented · **not automated** (browser picker) | manual |
 | Later | Auto-join bots, outbound voice, Jira/ADO/SharePoint | **Deferred** | backlog |
 

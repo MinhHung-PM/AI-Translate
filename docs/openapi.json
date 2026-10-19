@@ -5965,6 +5965,15 @@
       "title": "Caption Latency",
       "default": "balanced"
      },
+     "stt_provider": {
+      "type": "string",
+      "enum": [
+       "openai",
+       "soniox"
+      ],
+      "title": "Stt Provider",
+      "default": "openai"
+     },
      "consent_confirmed": {
       "type": "boolean",
       "title": "Consent Confirmed"
@@ -10552,7 +10561,8 @@
       "type": "string",
       "enum": [
        "transcription",
-       "translation"
+       "translation",
+       "soniox"
       ],
       "title": "Kind",
       "default": "transcription"
@@ -10567,6 +10577,18 @@
        }
       ],
       "title": "Target Language"
+     },
+     "session_config": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Session Config"
      }
     },
     "type": "object",

@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
-from app.ai.base import ProviderError, TokenUsage
+from app.ai.base import Credentials, ProviderError, TokenUsage
 from app.ai.catalog import get_catalog
 from app.audio.stt import REF_MAX_S, REF_MIN_S, KnownSpeaker, MockSTT, OpenAIDiarizingSTT, SpeechToText, SttResult
 from app.audio.wav import PcmAudio, concat, parse_wav
@@ -77,6 +77,9 @@ class AudioSessionIn(BaseModel):
     # Streaming captions: fast/balanced = words while speaking (gpt-realtime-whisper, delay minimal/low);
     # accurate = per-sentence VAD model.
     caption_latency: Literal["fast", "balanced", "accurate"] = "balanced"
+    # Speech provider for streaming / interpret modes: OpenAI Realtime (WebRTC) or Soniox (WebSocket).
+    # With Soniox, "interpret" = Soniox one-way translation; "streaming" = Soniox captions + app translation.
+    stt_provider: Literal["openai", "soniox"] = "openai"
     consent_confirmed: bool
 
 
@@ -172,6 +175,17 @@ def resolve_stt(db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None) -
     )
 
 
+def resolve_soniox(db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None) -> Credentials:
+    config = db.scalar(
+        select(AIProviderConfiguration).where(
+            AIProviderConfiguration.user_id == user_id, AIProviderConfiguration.provider == "soniox"
+        )
+    )
+    if config is None:
+        raise ProviderNotConfigured("Soniox needs an API key. Add Soniox in AI Settings (Cài đặt AI).")
+    return resolve_provider(db, user_id, session_id, config.id).credentials
+
+
 def stt_cost(provider: str, model: str, seconds: float) -> Decimal | None:
     info = get_catalog().get(provider)
     m = next((x for x in (info.stt_models if info else []) if x.id == model), None)
@@ -201,8 +215,16 @@ def start_session(
         raise ValidationFailed("Audio source ids must be unique")
     if active_session(db, meeting) is not None:
         raise Conflict("A live session is already running for this meeting")
-    stt, _ = resolve_stt(db, user_id, session_id)  # fail fast when STT is unavailable
-    if body.mode == "interpret" and not stt.is_mock:
+    soniox = body.stt_provider == "soniox"
+    if soniox:
+        if body.mode not in STREAMING_MODES:
+            raise ValidationFailed("Soniox is used only for streaming captions / live interpretation")
+        resolve_soniox(db, user_id, session_id)  # fail fast without a Soniox key
+        stt_model, is_mock = settings.soniox_model, False
+    else:
+        stt, _ = resolve_stt(db, user_id, session_id)  # fail fast when STT is unavailable
+        stt_model, is_mock = stt.model, stt.is_mock
+    if body.mode == "interpret" and not is_mock and not soniox:
         from app.audio.realtime import TRANSLATION_OUTPUT_LANGUAGES
 
         if meeting.target_language.value not in TRANSLATION_OUTPUT_LANGUAGES:
@@ -217,11 +239,11 @@ def start_session(
     live = LiveSession(
         meeting_id=meeting.id,
         connector=CONNECTOR,
-        is_demo=stt.is_mock,
+        is_demo=is_mock,
         status=LiveSessionStatus.running,
         created_by_id=user_id,
         requested_session_id=session_id,
-        provider_session_id=stt.model,
+        provider_session_id=stt_model,
         last_event_at=utcnow(),
         capture_config={
             "sources": [s.model_dump() for s in body.sources],
@@ -229,13 +251,14 @@ def start_session(
             "language_detection": body.language_detection,
             "languages": languages,  # empty = auto-detect
             # Streaming needs a real provider; the MOCK only supports chunked mode.
-            "mode": "chunked" if stt.is_mock else body.mode,
+            "mode": "chunked" if is_mock else body.mode,
             "noise_suppression": body.noise_suppression,
             "caption_latency": body.caption_latency,
-            "stt_model": stt.model,
+            "stt_provider": body.stt_provider,
+            "stt_model": stt_model,
             "consent_confirmed_at": utcnow().isoformat(),
         },
-        status_message=("MOCK speech-to-text (development only): no real speech recognition." if stt.is_mock else None),
+        status_message=("MOCK speech-to-text (development only): no real speech recognition." if is_mock else None),
     )
     db.add(live)
     db.flush()
@@ -602,6 +625,8 @@ def realtime_token(
     if config.get("mode") not in STREAMING_MODES:
         raise Conflict("This session does not use streaming captions")
     source = source_config(live, source_id)
+    if config.get("stt_provider") == "soniox":
+        return _soniox_token(db, live=live, meeting=meeting, user_id=user_id, session_id=session_id, source=source)
     stt, _ = resolve_stt(db, user_id, session_id)
     creds = getattr(stt, "_creds", None)
     if stt.is_mock or creds is None:
@@ -652,6 +677,72 @@ def realtime_token(
             err.message, details={"provider_code": err.code.value, "retryable": err.retryable}
         ) from None
     return _issue(db, live, token)
+
+
+def _translation_terms(db: Session, meeting: Meeting) -> list[tuple[str, str]]:
+    from app.models import GlossaryEntry
+
+    rows = db.execute(
+        select(GlossaryEntry.source_term, GlossaryEntry.preferred_translation)
+        .where(
+            GlossaryEntry.project_id == meeting.project_id,
+            GlossaryEntry.is_active.is_(True),
+            GlossaryEntry.target_language == meeting.target_language,
+        )
+        .limit(100)
+    ).all()
+    return [(clean_text(a)[:100], clean_text(b)[:100]) for a, b in rows if clean_text(a) and clean_text(b)]
+
+
+def _soniox_token(
+    db: Session,
+    *,
+    live: LiveSession,
+    meeting: Meeting,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    source: dict[str, Any],
+) -> Any:
+    from app.audio.soniox import WEBSOCKET_URL, SonioxToken, build_config, create_temporary_key
+
+    settings = get_settings()
+    config = live.capture_config or {}
+    creds = resolve_soniox(db, user_id, session_id)
+    interpret = config.get("mode") == "interpret"
+    project = db.get(Project, meeting.project_id)
+    session_config = build_config(
+        model=settings.soniox_model,
+        target_language=meeting.target_language.value if interpret else None,
+        language_hints=list(config.get("languages") or []),
+        diarize=not source.get("single_speaker"),
+        terms=_keywords(db, meeting),
+        translation_terms=_translation_terms(db, meeting) if interpret else [],
+        domain=project.name if project else None,
+    )
+    try:
+        value, expires_at = create_temporary_key(
+            creds,
+            ttl_seconds=settings.stt_realtime_token_ttl_seconds,
+            max_session_seconds=settings.soniox_max_session_seconds,
+            timeout_s=settings.stt_timeout_seconds,
+        )
+    except ProviderError as err:
+        live.status_message = f"Live caption error: {err.message}"
+        db.commit()
+        raise SpeechToTextFailed(
+            err.message, details={"provider_code": err.code.value, "retryable": err.retryable}
+        ) from None
+    return _issue(
+        db,
+        live,
+        SonioxToken(
+            value=value,
+            expires_at=expires_at,
+            model=settings.soniox_model,
+            websocket_url=WEBSOCKET_URL,
+            config=session_config,
+        ),
+    )
 
 
 def _issue(db: Session, live: LiveSession, token: Any) -> Any:
@@ -727,14 +818,19 @@ def ingest_realtime_segment(
         return ChunkOutcome(duplicate=True, echoes=1)
 
     settings = get_settings()
-    model = body.model or (settings.stt_interpret_model if interpret else settings.stt_realtime_model)
+    provider = "soniox" if config.get("stt_provider") == "soniox" else "openai"
+    if provider == "soniox":
+        model = config.get("stt_model") or settings.soniox_model
+        model = f"{model}+translation" if interpret else model
+    else:
+        model = body.model or (settings.stt_interpret_model if interpret else settings.stt_realtime_model)
     seconds = round((body.duration_ms or 0) / 1000, 2)
-    ctx = UsageContext(user_id, meeting.project_id, meeting.id, None, "openai", model, "byok")
+    ctx = UsageContext(user_id, meeting.project_id, meeting.id, None, provider, model, "byok")
     rec = DbUsageMeter(db).record(
         ctx, "speech_to_text", TokenUsage(reported_by_provider=False), duration_ms=0, success=True
     )
     rec.audio_seconds = seconds or None
-    rec.estimated_cost_usd = stt_cost("openai", model, seconds) if seconds else None
+    rec.estimated_cost_usd = stt_cost(provider, model, seconds) if seconds else None
 
     profile: AudioSpeakerProfile | None = None
     if source.get("single_speaker"):
@@ -776,7 +872,7 @@ def ingest_realtime_segment(
             tr.text, tr.status, tr.provider, tr.model, tr.error_message = (
                 translated,
                 TranslationStatus.done,
-                "openai-realtime-translate",
+                "soniox" if provider == "soniox" else "openai-realtime-translate",
                 model,
                 None,
             )

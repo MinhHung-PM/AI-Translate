@@ -24,11 +24,18 @@ export class SourceCapture {
   private downsampler: Downsampler | null = null;
   private offsetBaseMs = 0;
   level = 0;
+  /** Optional tap on the 16 kHz mono samples (e.g. streamed to Soniox). */
+  onSamples: ((samples: Float32Array) => void) | null = null;
 
   constructor(
     readonly stream: MediaStream,
     private readonly onUtterance: (u: Utterance) => void,
   ) {}
+
+  /** Offset (ms) of this capture's first sample from the shared clock ``t0``. */
+  get startOffsetMs(): number {
+    return this.offsetBaseMs;
+  }
 
   async start(t0: number): Promise<void> {
     const ctx = new AudioContext();
@@ -50,6 +57,7 @@ export class SourceCapture {
   private handle(block: Float32Array): void {
     if (!this.downsampler) return;
     const samples = this.downsampler.push(block);
+    this.onSamples?.(samples);
     for (const u of this.segmenter.push(samples)) this.emit(u);
     this.level = this.segmenter.level;
   }

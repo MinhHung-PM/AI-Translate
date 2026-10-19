@@ -341,6 +341,8 @@ export const vi = {
     removeKey: "Xóa API key",
     removeConfig: "Xóa cấu hình",
     capabilities: "Khả năng hỗ trợ",
+    speechOnly:
+      "Nhà cung cấp này chỉ dùng cho nhận dạng giọng nói / phiên dịch trực tiếp (chọn trên màn hình Dịch trực tiếp). Dịch văn bản và tạo biên bản vẫn dùng nhà cung cấp mặc định.",
     configured: "Cấu hình của tôi",
     keyStatus: "Trạng thái khóa",
     keyStorage: { none: "Chưa có khóa", session: "Chỉ trong phiên", persistent: "Đã ghi nhớ (mã hóa)" },
@@ -557,18 +559,33 @@ export const vi = {
     streamingUnavailable: "Chế độ chữ chạy cần OpenAI API key — đang dùng chế độ theo câu (MOCK).",
     speakingNow: "Đang nói…",
     playVoice: "Phát giọng đọc bản dịch (nên đeo tai nghe)",
+    provider: {
+      title: "Nhà cung cấp",
+      openai: "OpenAI",
+      soniox: "Soniox (rẻ hơn)",
+      needKey: "Muốn dùng Soniox: thêm Soniox API key trong Cài đặt AI (cần quyền \"Temporary API keys\").",
+      hint: {
+        openai: "OpenAI Realtime qua WebRTC.",
+        soniox:
+          "Soniox qua WebSocket (≈ $0,12/giờ phụ đề, ≈ $0,18/giờ kèm dịch — theo bảng giá Soniox). Hỗ trợ bảng thuật ngữ và tách người nói; tự nhận diện ngôn ngữ, kể cả nói xen.",
+      },
+    },
     latency: {
       title: "Chế độ",
       interpret: "Phiên dịch trực tiếp (khuyên dùng)",
       fast: "Phụ đề nhanh nhất",
       balanced: "Phụ đề cân bằng",
       accurate: "Chính xác theo câu",
+      sonioxCaptions: "Phụ đề + dịch bằng AI của bạn",
       hint: {
         interpret:
           "OpenAI phiên dịch thẳng từ giọng nói (gpt-realtime-translate): bản dịch chạy từng chữ ngay khi đang nói, kèm lời gốc. Không dùng bảng thuật ngữ, không tách người nói trong cùng một nguồn; tên riêng nên kiểm tra lại.",
         fast: "Chữ hiện gần như ngay khi nói (gpt-realtime-whisper, delay minimal); đôi khi kém chính xác hơn.",
         balanced: "Chữ chạy theo lời nói với độ chính xác tốt (gpt-realtime-whisper, delay low). Câu được chốt khi ngắt hơi hoặc tối đa 12 giây.",
         accurate: "Chờ hết câu rồi mới hiện (nhận dạng theo lượt nói); hỗ trợ danh sách ngôn ngữ + thuật ngữ.",
+        sonioxInterpret:
+          "Soniox nhận dạng và dịch cùng lúc: lời gốc và bản dịch chạy từng chữ; thuật ngữ trong Glossary được dùng cho cả nhận dạng lẫn dịch.",
+        sonioxCaptions: "Soniox chỉ nhận dạng (chữ chạy theo lời nói); câu hoàn chỉnh được dịch bằng nhà cung cấp AI mặc định của bạn.",
       },
     },
     noise: {
