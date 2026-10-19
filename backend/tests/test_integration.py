@@ -338,3 +338,50 @@ def test_health_endpoints():
     assert c.get("/api/v1/health/live").json() == {"status": "ok"}
     assert c.get("/api/v1/health/ready").json()["database"] == "ok"
     assert c.get("/api/v1/openapi.json").status_code == 200
+
+
+def test_memo_action_item_linked_to_a_decision_is_saved(pm, monkeypatch):
+    """Real models link actions to decisions (related_decision_index): the decision
+    row must be written before the action that references it."""
+    import json
+
+    from app.ai.base import MemoGenerationResult, TokenUsage
+    from app.services import memo_generation
+
+    meeting = create_meeting(pm)
+    upload_sample(pm, meeting["id"])
+    refs = [e["sequence"] for e in pm.get(f"/meetings/{meeting['id']}/transcript").json()["items"]][:2]
+    draft = {
+        "executive_summary": "Tóm tắt",
+        "discussion": [],
+        "decisions": [
+            {"statement": "Làm dần từng bước", "owner": None, "confidence": "high", "source_refs": [refs[0]]}
+        ],
+        "action_items": [
+            {
+                "description": "Chuẩn bị tài liệu",
+                "related_decision_index": 0,
+                "kind": "confirmed",
+                "source_refs": [refs[1]],
+            }
+        ],
+        "issues": [],
+        "risks": [],
+        "open_questions": [],
+        "next_meeting": None,
+        "pm_view": None,
+    }
+
+    class Linked:
+        model = "fake-llm"
+
+        def generate(self, request, *, repair_hint=None):
+            return MemoGenerationResult(json.dumps(draft, ensure_ascii=False), TokenUsage(), "fake-llm")
+
+    monkeypatch.setattr(memo_generation, "memo_provider", lambda resolved, params: Linked())
+    pm.post(f"/meetings/{meeting['id']}/memo/generate")
+    run_jobs()
+    memo = pm.get(f"/meetings/{meeting['id']}/memo").json()
+    assert memo["status"] == "draft", memo.get("generation_error")
+    action = memo["action_items"][0]
+    assert action["related_decision_id"] == memo["decisions"][0]["id"]

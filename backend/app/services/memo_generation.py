@@ -215,6 +215,9 @@ def persist_draft(db: Session, memo: Memo, meeting: Meeting, draft: MemoDraft, e
         row.source_links = [MemoItemSource(transcript_entry_id=by_seq[r].id) for r in dict.fromkeys(d.source_refs)]
         decisions.append(row)
         db.add(row)
+    # Action items may reference these decisions (related_decision_id) and there is no ORM
+    # relationship to order the INSERTs: write the decisions first.
+    db.flush()
 
     for i, it in enumerate(draft.issues, start=1):
         owner, note = g.check_owner(it.owner, it.source_refs)
