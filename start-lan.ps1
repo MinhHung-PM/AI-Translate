@@ -128,7 +128,17 @@ if ($busy) {
 }
 
 Write-Host "Dang build va khoi dong (lan dau co the mat 5-10 phut)..."
-docker @Compose up --build -d
+# Build one image at a time (api, migrate and worker share the backend image): parallel builds can
+# time out in Docker Desktop ("DeadlineExceeded: no active session"). One retry per image.
+foreach ($svc in @("api", "web")) {
+  for ($try = 1; $try -le 2; $try++) {
+    docker @Compose build $svc
+    if ($LASTEXITCODE -eq 0) { break }
+    if ($try -eq 1) { Write-Host "Build '$svc' loi, dang thu lai..."; Start-Sleep -Seconds 5 }
+  }
+  if ($LASTEXITCODE -ne 0) { Write-Host "Build '$svc' that bai. Kiem tra mang/Internet roi chay lai .\start-lan.cmd"; exit 1 }
+}
+docker @Compose up -d
 if ($LASTEXITCODE -ne 0) { Write-Host "Loi khi khoi dong. Xem: docker $($Compose -join ' ') logs migrate api caddy --tail=50"; exit 1 }
 
 Write-Host "Cho ung dung san sang..."
