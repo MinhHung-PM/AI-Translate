@@ -78,6 +78,7 @@ SESSION_TTL_MINUTES=10080
 LAN_HOST=$Ip
 LAN_HTTPS_PORT=443
 LAN_HTTP_PORT=80
+API_PORT=18000
 TRUSTED_HOSTS=$Ip
 PUBLIC_BASE_URL=https://$Ip
 ENABLE_MOCK_PROVIDER=false
@@ -94,6 +95,8 @@ SONIOX_API_KEY=$soniox
   # Keep the site address in sync with this computer's IP (e.g. after a DHCP change).
   $text = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot $EnvFile))
   $text = $text -replace '(?m)^LAN_HOST=.*$', "LAN_HOST=$Ip" -replace '(?m)^TRUSTED_HOSTS=.*$', "TRUSTED_HOSTS=$Ip" -replace '(?m)^PUBLIC_BASE_URL=.*$', "PUBLIC_BASE_URL=https://$Ip"
+  # The API port is only for local diagnostics: keep it off 8000, which the dev stack uses.
+  if ($text -notmatch '(?m)^API_PORT=') { $text = $text.TrimEnd() + "`nAPI_PORT=18000`n" }
   Write-Utf8Lf $EnvFile $text
 }
 
@@ -109,6 +112,20 @@ try {
 }
 $profiles = Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object { $_.NetworkCategory -eq 'Public' }
 if ($profiles) { Write-Host "CANH BAO: mang '$($profiles[0].Name)' dang de 'Public' - dong nghiep se khong truy cap duoc. Doi sang Private trong Settings > Network." }
+
+# The dev stack (start.ps1, project "memohub") uses the same web port 3000: stop it (its data is kept).
+$devRunning = docker ps --filter "label=com.docker.compose.project=memohub" --format "{{.Names}}"
+if ($devRunning) {
+  Write-Host "Dang tat site dev (start.ps1) de giai phong cong 3000 - du lieu dev van duoc giu."
+  docker stop @($devRunning -split "`n" | Where-Object { $_ }) | Out-Null
+}
+$busy = Get-NetTCPConnection -State Listen -LocalPort 3000, 80, 443 -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($busy) {
+  $proc = (Get-Process -Id $busy.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+  if ($proc -and $proc -notmatch 'docker|com.docker|wslrelay|vpnkit') {
+    Write-Host "CANH BAO: cong $($busy.LocalPort) dang bi chuong trinh '$proc' dung. Tat chuong trinh do, hoac doi LAN_HTTPS_PORT / LAN_HTTP_PORT trong $EnvFile."
+  }
+}
 
 Write-Host "Dang build va khoi dong (lan dau co the mat 5-10 phut)..."
 docker @Compose up --build -d

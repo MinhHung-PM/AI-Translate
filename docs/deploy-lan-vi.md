@@ -59,7 +59,8 @@ IP đổi (DHCP): chạy lại `.\start-lan.ps1` — script tự cập nhật đ
 | Xem log | `docker compose -p memohub-lan --env-file .env.lan --profile lan logs --tail=100` |
 
 Trên chính máy bạn có thể dùng `http://localhost:3000` (localhost được trình duyệt coi là an toàn).
-Site dev (`.\start.ps1`) và site LAN dùng chung cổng 3000/8000 trên máy: chỉ chạy một trong hai.
+Site dev (`.\start.ps1`) và site LAN cùng dùng cổng 3000 trên máy: `start-lan` tự tắt site dev (dữ liệu dev
+vẫn giữ). API của site LAN chỉ mở cho máy này ở cổng 18000 (`API_PORT`).
 
 ## Lưu ý
 
