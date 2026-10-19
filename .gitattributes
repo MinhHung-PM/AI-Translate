@@ -4,3 +4,4 @@ Dockerfile text eol=lf
 *.yml text eol=lf
 .env.example text eol=lf
 deploy/Caddyfile text eol=lf
+*.cmd text eol=crlf

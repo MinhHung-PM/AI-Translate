@@ -18,8 +18,13 @@ Docker Desktop bật "Start when you sign in".
 ```powershell
 cd AI-Translate
 git pull
-.\start-lan.ps1
+.\start-lan.cmd
 ```
+
+`start-lan.cmd` chạy `start-lan.ps1` mà không cần đổi chính sách chạy script của Windows (lỗi
+"running scripts is disabled on this system"). Có thể bấm đúp vào file, hoặc chạy trực tiếp
+`powershell -ExecutionPolicy Bypass -File .\start-lan.ps1`. Các lệnh khác: `.\start-lan.cmd stop`,
+`.\start-lan.cmd backup`, `.\start-lan.cmd start 10.0.1.23`.
 
 Lần đầu script sẽ:
 1. Tìm IP mạng nội bộ của máy (10.x / 192.168.x / 172.16–31.x). Sai IP → `.\start-lan.ps1 start 10.0.1.23`.
