@@ -43,13 +43,19 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
     payload = JSON.stringify(body);
   }
   if (method !== "GET") headers["X-CSRF-Token"] = csrfToken;
-  const res = await fetch(`/api/v1${path}${buildQuery(query)}`, {
-    method,
-    headers,
-    body: payload,
-    credentials: "same-origin",
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}${buildQuery(query)}`, {
+      method,
+      headers,
+      body: payload,
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    // Network failure (offline, server restarting): status 0 so callers can retry.
+    throw new ApiError(0, "network_error", "", { retryable: true });
+  }
   if (res.status === 204) return undefined as T;
   const isJson = res.headers.get("content-type")?.includes("application/json");
   const data: unknown = isJson ? await res.json() : await res.text();

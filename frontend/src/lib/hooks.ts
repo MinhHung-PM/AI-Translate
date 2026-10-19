@@ -21,18 +21,26 @@ export function useApi<T>(path: string | null, query?: Query) {
   const queryKey = JSON.stringify(query ?? {});
   const key = path === null ? null : `${path}?${queryKey}`;
   const [state, setState] = useState<State<T>>({ key: null, data: null, error: null });
+  // The key currently wanted: a slower response for an older key (e.g. a filter typed
+  // character by character) must not overwrite the newer one.
+  const wanted = useRef(key);
 
   const load = useCallback((): Promise<void> => {
     if (path === null) return Promise.resolve();
     return api.get<T>(path, JSON.parse(queryKey) as Query).then(
-      (data) => setState({ key, data, error: null }),
-      (err: unknown) => setState((s) => ({ key, data: s.data, error: toApiError(err) })),
+      (data) => {
+        if (wanted.current === key) setState({ key, data, error: null });
+      },
+      (err: unknown) => {
+        if (wanted.current === key) setState((s) => ({ key, data: s.data, error: toApiError(err) }));
+      },
     );
   }, [path, queryKey, key]);
 
   useEffect(() => {
+    wanted.current = key;
     void load();
-  }, [load]);
+  }, [load, key]);
 
   const setData = useCallback((data: T) => setState((s) => ({ ...s, data })), []);
   return {

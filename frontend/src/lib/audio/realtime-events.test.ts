@@ -96,3 +96,15 @@ describe("RealtimeEventProcessor — streaming model without server VAD", () => 
     expect(errors).toEqual([]);
   });
 });
+
+describe("RealtimeEventProcessor overlapping items", () => {
+  it("finalizing one item keeps the next item's live words on screen", () => {
+    const shown: string[] = [];
+    const p = new RealtimeEventProcessor({ onInterim: (_id, text) => shown.push(text), onFinal: () => undefined, onError: () => undefined });
+    const send = (ev: object) => p.handle(JSON.stringify(ev));
+    send({ type: "conversation.item.input_audio_transcription.delta", item_id: "A", delta: "Câu một" });
+    send({ type: "conversation.item.input_audio_transcription.delta", item_id: "B", delta: "Câu hai đang" });
+    send({ type: "conversation.item.input_audio_transcription.completed", item_id: "A", transcript: "Câu một." });
+    expect(shown.at(-1)).toBe("Câu hai đang");
+  });
+});

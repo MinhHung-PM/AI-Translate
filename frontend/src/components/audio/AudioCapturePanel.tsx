@@ -43,6 +43,8 @@ function mediaError(err: unknown): string {
     if (err.name === "NotFoundError" || err.name === "OverconstrainedError") return t.audio.deviceMissing;
     if (err.name === "NotReadableError" || err.name === "AbortError") return t.audio.deviceBusy;
   }
+  // Connection errors from OpenAI / Soniox carry a useful message (e.g. a rejected key).
+  if (!(err instanceof ApiError) && err instanceof Error && err.message) return `${t.common.errorGeneric} (${err.message})`;
   return errorMessage(err);
 }
 
@@ -111,6 +113,14 @@ export function AudioCapturePanel({
   const realtime = useRef(new Map<string, RealtimeCaptionSource | SonioxCaptionSource>());
   const cleaners = useRef(new Map<string, DenoisedSource>());
   const finals = useRef(new Map<string, Promise<void>>());
+  // Set when the panel unmounts, so a start() still in progress tears itself down.
+  const unmounted = useRef(false);
+  useEffect(() => {
+    unmounted.current = false;
+    return () => {
+      unmounted.current = true;
+    };
+  }, []);
 
   // Client-only capability check (server snapshot is optimistic to avoid a hydration mismatch).
   const isSupported = useSyncExternalStore(noopSubscribe, supported, () => true);
@@ -157,17 +167,27 @@ export function AudioCapturePanel({
     const rts = realtime.current;
     const cls = cleaners.current;
     const sid = sessionId;
+    const fins = finals.current;
+    const pumps = pumping.current;
     return () => {
       window.removeEventListener("beforeunload", warn);
-      rts.forEach((r) => r.stop());
+      // Leaving the page: finish the last sentences first, then end the server session
+      // (segments arriving after /stop would be refused and lost).
+      const live = [...rts.values()];
+      const capList = [...caps.values()];
+      const cleanerList = [...cls.values()];
       rts.clear();
-      cls.forEach((d) => void d.close());
+      caps.clear();
       cls.clear();
-      if (caps.size) {
-        caps.forEach((c) => void c.stop());
-        caps.clear();
-        void api.post(`/audio-sessions/${sid}/stop`).catch(() => undefined);
-      }
+      if (!capList.length && !live.length) return; // already stopped with the Stop button
+      void (async () => {
+        await Promise.all(live.map((r) => r.stop().catch(() => undefined)));
+        await Promise.all(capList.map((c) => c.stop().catch(() => undefined)));
+        await Promise.race([Promise.all([...fins.values()]), sleep(10000)]);
+        for (let i = 0; i < 40 && pumps.size; i++) await sleep(250);
+        await Promise.all(cleanerList.map((d) => d.close().catch(() => undefined)));
+        await api.post(`/audio-sessions/${sid}/stop`).catch(() => undefined);
+      })();
     };
   }, [running, sessionId]);
 
@@ -197,6 +217,8 @@ export function AudioCapturePanel({
     setError(null);
     try {
       const stream = await openDisplayAudio();
+      // "Stop sharing" in the browser bar ends the track: tell the user instead of capturing silence.
+      stream.getAudioTracks()[0]?.addEventListener("ended", () => setError(t.audio.shareEnded));
       const n = picked.filter((p) => p.kind === "system").length + 1;
       setPicked([...picked, { id: `meeting-${n}`, kind: "system", label: n > 1 ? `${t.audio.systemSource} ${n}` : t.audio.systemSource, singleSpeaker: false, stream }]);
     } catch (err) {
@@ -260,28 +282,38 @@ export function AudioCapturePanel({
     const c = counters.current.get(sourceId);
     const prev = finals.current.get(sourceId) ?? Promise.resolve();
     const next = prev.then(async () => {
-      try {
-        const r = await api.post<AudioChunkResult>(`/audio-sessions/${sid}/segments`, {
-          source_id: sourceId,
-          item_id: u.itemId.replace(/[^A-Za-z0-9_\-:.]/g, "_").slice(0, 120),
-          text: u.text.slice(0, 5000),
-          offset_ms: u.startMs,
-          duration_ms: u.durationMs,
-          model: model || null,
-          speaker: u.speaker,
-          translated_text: u.translation ? u.translation.slice(0, 8000) : null,
-        });
-        if (c) {
-          c.sent += 1;
-          c.echoes += r.echoes ?? 0;
-          c.lastError = null;
-        }
-        if (r.note) setNote(r.note);
-        if (r.entries.length) onChanged();
-      } catch (err) {
-        if (c) {
-          c.errors += 1;
-          c.lastError = errorMessage(err);
+      // Idempotent per item on the server, so a retry after a network blip never duplicates.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const r = await api.post<AudioChunkResult>(`/audio-sessions/${sid}/segments`, {
+            source_id: sourceId,
+            item_id: u.itemId.replace(/[^A-Za-z0-9_\-:.]/g, "_").slice(0, 120),
+            text: u.text.slice(0, 5000),
+            offset_ms: u.startMs,
+            duration_ms: u.durationMs,
+            model: model || null,
+            speaker: u.speaker,
+            translated_text: u.translation ? u.translation.slice(0, 8000) : null,
+          });
+          if (c) {
+            c.sent += 1;
+            c.echoes += r.echoes ?? 0;
+            c.lastError = null;
+          }
+          if (r.note) setNote(r.note);
+          if (r.entries.length) onChanged();
+          return;
+        } catch (err) {
+          const retryAfter = err instanceof ApiError ? Number(err.details?.retry_after_seconds ?? 0) : 0;
+          const retryable = err instanceof ApiError && (err.status === 429 || err.status === 0 || err.details?.retryable === true);
+          if (!retryable || attempt === 3) {
+            if (c) {
+              c.errors += 1;
+              c.lastError = errorMessage(err);
+            }
+            return;
+          }
+          await sleep(retryAfter > 0 ? retryAfter * 1000 : 1500 * (attempt + 1));
         }
       }
     });
@@ -325,9 +357,16 @@ export function AudioCapturePanel({
 
   async function start() {
     if (!picked.length) return setError(t.audio.needSource);
+    if (busy) return; // no second session from a double click
     setBusy(true);
     setError(null);
     setNote(null);
+    counters.current.clear();
+    queues.current.clear();
+    seqs.current.clear();
+    finals.current.clear();
+    let sid: string | null = null;
+    const opened: MediaStream[] = []; // microphones opened by this attempt (closed if it fails)
     try {
       const res = await api.post<AudioSession>(`/meetings/${meetingId}/audio-sessions`, {
         sources: picked.map((p) => ({ id: p.id, kind: p.kind, label: p.label.trim() || p.id, single_speaker: p.singleSpeaker })),
@@ -340,13 +379,19 @@ export function AudioCapturePanel({
         stt_provider: soniox ? "soniox" : "openai",
         consent_confirmed: consent,
       });
-      const sid = res.session.id;
+      sid = res.session.id;
+      const sessionId = sid;
       const mode = res.session.capture_config?.mode;
       const streaming = mode === "streaming" || mode === "interpret";
       if (streamingWanted && !streaming) setNote(t.audio.streamingUnavailable);
       const t0 = performance.now();
       for (const p of picked) {
-        const raw = p.stream ?? (await openMicrophone(p.deviceId!, noise !== "off"));
+        if (unmounted.current) throw new Error("UNMOUNTED");
+        let raw = p.stream;
+        if (!raw) {
+          raw = await openMicrophone(p.deviceId!, noise !== "off");
+          opened.push(raw);
+        }
         const cleaned = await denoise(raw, noise, p.kind === "microphone" ? "microphone" : "other");
         cleaners.current.set(p.id, cleaned);
         const stream = cleaned.stream;
@@ -358,25 +403,34 @@ export function AudioCapturePanel({
           // Streaming: the local sentence detector only tells OpenAI where an utterance ends.
           if (streaming) return realtime.current.get(p.id)?.commit();
           queues.current.get(p.id)?.push(u);
-          void pump(sid, p.id);
+          void pump(sessionId, p.id);
         });
+        captures.current.set(p.id, cap); // registered first so a failure below still releases it
         await cap.start(t0);
-        captures.current.set(p.id, cap);
-        if (streaming) await startStreaming(sid, p, stream, cap, t0, res.session.capture_config?.stt_provider ?? "openai");
+        if (streaming) await startStreaming(sessionId, p, stream, cap, t0, res.session.capture_config?.stt_provider ?? "openai");
       }
+      if (unmounted.current) throw new Error("UNMOUNTED");
       setSessionId(sid);
       setSpeakers(res.speakers);
       onChanged();
     } catch (err) {
-      realtime.current.forEach((r) => r.stop());
+      realtime.current.forEach((r) => void r.stop());
       realtime.current.clear();
       captures.current.forEach((c) => void c.stop());
       captures.current.clear();
       cleaners.current.forEach((d) => void d.close());
       cleaners.current.clear();
+      opened.forEach((s) => s.getTracks().forEach((tr) => tr.stop()));
+      // The server session was created before the devices failed: end it, or the next
+      // attempt would be refused ("a live session is already running").
+      if (sid) await api.post(`/audio-sessions/${sid}/stop`).catch(() => undefined);
+      if (unmounted.current) return;
+      // Shared screen/tab audio was released by the cleanup above: it must be picked again.
+      setPicked((prev) => prev.filter((p) => !p.stream || p.stream.getAudioTracks().some((tr) => tr.readyState === "live")));
       setError(mediaError(err));
+      onChanged();
     } finally {
-      setBusy(false);
+      if (!unmounted.current) setBusy(false);
     }
   }
 

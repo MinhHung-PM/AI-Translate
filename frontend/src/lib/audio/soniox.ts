@@ -50,8 +50,11 @@ export class SonioxCaptionSource {
   }
 
   async start(): Promise<void> {
+    if (this.stopped) return;
     this.onState(this.attempts ? "reconnecting" : "connecting", this.attempts);
     const token = await this.getToken();
+    // Stop may be clicked while connecting: never open a socket behind it.
+    if (this.stopped) return;
     if (token.kind !== "soniox" || !token.session_config) throw new Error("Not a Soniox session");
     this.model = token.model;
     if (!this.processor) {
@@ -72,6 +75,11 @@ export class SonioxCaptionSource {
       };
       ws.onerror = () => reject(new Error("Could not connect to Soniox"));
     });
+    if (this.stopped && !this.finished) {
+      this.ws = null;
+      ws.close();
+      return;
+    }
     ws.onmessage = (e: MessageEvent<string>) => {
       if (typeof e.data !== "string") return;
       this.processor?.handle(e.data);
@@ -115,6 +123,7 @@ export class SonioxCaptionSource {
       return;
     }
     await new Promise((r) => setTimeout(r, Math.min(8000, 1000 * 2 ** (this.attempts - 1))));
+    if (this.stopped) return;
     try {
       await this.start();
     } catch {

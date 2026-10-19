@@ -92,18 +92,20 @@ export default function MemoPage() {
     });
   }
 
-  async function saveDraft() {
-    if (!memo || !narrative) return;
+  /** Returns false when saving failed (the error stays on screen). */
+  async function saveDraft(): Promise<boolean> {
+    if (!memo || !narrative) return true;
     const m = await run("save", () => api.put<Memo>(`/memos/${memo.id}`, cleanNarrative(narrative)));
-    if (m) {
-      setDirty(false);
-      applyMemo(m);
-    }
+    if (!m) return false;
+    setDirty(false);
+    applyMemo(m);
+    return true;
   }
 
   async function transition(action: "submit" | "approve" | "reject" | "reopen", body?: unknown) {
     if (!memo) return;
-    if (dirty && action !== "reopen") await saveDraft();
+    // Never submit/approve a memo without the edits on screen: stop if saving them failed.
+    if (dirty && action !== "reopen" && !(await saveDraft())) return;
     const m = await run(action, () => api.post<Memo>(`/memos/${memo.id}/${action}`, body));
     applyMemo(m);
     setReview(null);

@@ -56,7 +56,10 @@ export class RealtimeCaptionSource {
     return this.interpreting;
   }
 
+  private lastMessageAt = 0;
+
   private handle(data: string): void {
+    this.lastMessageAt = Date.now();
     if (this.interpreting) this.interpreter.handle(data);
     else this.captions.handle(data);
   }
@@ -68,8 +71,10 @@ export class RealtimeCaptionSource {
   }
 
   async start(): Promise<void> {
+    if (this.stopped) return;
     this.onState(this.attempts ? "reconnecting" : "connecting", this.attempts);
     const token = await this.getToken();
+    if (this.stopped) return;
     this.model = token.model;
     this.clientCommits = !!token.client_commits;
     this.interpreting = token.kind === "translation";
@@ -94,15 +99,28 @@ export class RealtimeCaptionSource {
       if (this.stopped || this.pc !== pc) return;
       if (pc.connectionState === "failed" || pc.connectionState === "disconnected") void this.reconnect();
     };
+    // Stop may be clicked while connecting: never leave a connection open behind it.
+    const abandoned = () => {
+      if (!this.stopped) return false;
+      pc.close();
+      if (this.pc === pc) this.pc = null;
+      return true;
+    };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    if (abandoned()) return;
     const res = await fetch(token.calls_url, {
       method: "POST",
       body: offer.sdp,
       headers: { Authorization: `Bearer ${token.client_secret}`, "Content-Type": "application/sdp" },
     });
-    if (!res.ok) throw new Error(`OpenAI Realtime rejected the connection (${res.status})`);
-    await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
+    if (!res.ok) {
+      pc.close();
+      throw new Error(`OpenAI Realtime rejected the connection (${res.status})`);
+    }
+    const answer = await res.text();
+    if (abandoned()) return;
+    await pc.setRemoteDescription({ type: "answer", sdp: answer });
   }
 
   /** End of an utterance detected locally (pause or 12 s cap): ask OpenAI to finalize it. */
@@ -121,6 +139,7 @@ export class RealtimeCaptionSource {
       return;
     }
     await new Promise((r) => setTimeout(r, Math.min(8000, 1000 * 2 ** (this.attempts - 1))));
+    if (this.stopped) return;
     try {
       await this.start();
     } catch {
@@ -128,9 +147,22 @@ export class RealtimeCaptionSource {
     }
   }
 
-  stop(): void {
-    this.stopped = true;
+  /**
+   * Finishes the last sentence before closing: commits the pending audio and waits (bounded)
+   * until OpenAI stops sending words — the interpreter runs a few seconds behind the speaker.
+   */
+  async stop(): Promise<void> {
+    if (this.stopped) return;
     this.commit();
+    this.stopped = true;
+    if (this.dc?.readyState === "open") {
+      const quietMs = this.interpreting ? 2000 : 1200;
+      const deadline = Date.now() + (this.interpreting ? 6000 : 4000);
+      this.lastMessageAt = Math.max(this.lastMessageAt, Date.now());
+      while (Date.now() < deadline && Date.now() - this.lastMessageAt < quietMs) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
     this.flush(true);
     if (this.staleTimer) clearInterval(this.staleTimer);
     this.staleTimer = null;

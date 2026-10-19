@@ -81,8 +81,14 @@ export class RealtimeEventProcessor {
     const it = this.item(key);
     this.items.delete(key);
     const text = transcript.trim();
-    this.h.onInterim(key, "");
-    if (key !== finalId) this.h.onInterim(finalId, "");
+    // The UI shows one live line per source: if the next utterance is already streaming,
+    // show it instead of clearing (clearing would hide it until its next word).
+    const next = [...this.items.entries()].filter(([, x]) => x.text.trim()).sort((a, b) => b[1].updatedAt - a[1].updatedAt)[0];
+    if (next) this.h.onInterim(next[0], next[1].text);
+    else {
+      this.h.onInterim(key, "");
+      if (key !== finalId) this.h.onInterim(finalId, "");
+    }
     if (!text) return;
     const start = it.startMs ?? this.now();
     const speakers = Object.entries(it.speakers).sort((a, b) => b[1] - a[1]);

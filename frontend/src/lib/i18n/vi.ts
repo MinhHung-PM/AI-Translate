@@ -46,6 +46,7 @@ export const vi = {
     apply: "Áp dụng",
     reset: "Đặt lại",
     errorGeneric: "Đã xảy ra lỗi. Vui lòng thử lại.",
+    networkError: "Không kết nối được máy chủ (mạng hoặc máy chủ đang khởi động lại). Vui lòng thử lại.",
     required: "Bắt buộc",
     aiGenerated: "AI tạo",
     humanEntered: "Người dùng nhập",
@@ -558,6 +559,7 @@ export const vi = {
     chunkedHint: "Gửi từng câu sau khi dứt câu (chậm hơn vài giây) nhưng tách người nói trong âm thanh cuộc họp bằng mẫu giọng.",
     streamingUnavailable: "Chế độ chữ chạy cần OpenAI API key — đang dùng chế độ theo câu (MOCK).",
     speakingNow: "Đang nói…",
+    shareEnded: "Đã dừng chia sẻ âm thanh màn hình/tab — nguồn âm thanh cuộc họp không còn được thu. Hãy dừng phiên và chọn lại nguồn.",
     playVoice: "Phát giọng đọc bản dịch (nên đeo tai nghe)",
     provider: {
       title: "Nhà cung cấp",

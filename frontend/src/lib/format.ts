@@ -38,6 +38,7 @@ export function formatUsd(value: string | number | null | undefined): string {
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     const known = (t.errors as Record<string, string>)[err.code];
+    if (err.status === 0) return t.common.networkError;
     if (!known) return err.message || t.common.errorGeneric;
     return err.message && err.message !== known ? `${known} (${err.message})` : known;
   }
