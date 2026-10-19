@@ -39,8 +39,9 @@ def create_app() -> FastAPI:
             "Product Core (Workstream 1) and meeting-platform integrations (Workstream 2) API. "
             "All endpoints are under /api/v1."
         ),
-        openapi_url="/api/v1/openapi.json",
-        docs_url="/api/docs",
+        # API docs only outside production (the schema is not published on a public site).
+        openapi_url=None if settings.is_production else "/api/v1/openapi.json",
+        docs_url=None if settings.is_production else "/api/docs",
         redoc_url=None,
         lifespan=lifespan,
     )
@@ -51,7 +52,12 @@ def create_app() -> FastAPI:
         return integrations.integration_error_response(exc)
 
     if settings.trusted_hosts and "*" not in settings.trusted_hosts:
-        app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
+        # Internal callers are always allowed: the Next.js proxy (Host "api" in Docker Compose)
+        # and the container health check (127.0.0.1).
+        internal = ["api", "localhost", "127.0.0.1"]
+        app.add_middleware(
+            TrustedHostMiddleware, allowed_hosts=list(dict.fromkeys([*settings.trusted_hosts, *internal]))
+        )
     if settings.cors_allowed_origins:
         # The browser normally talks to the API through the same-origin Next.js
         # proxy; CORS is only needed for explicitly listed origins.

@@ -44,7 +44,9 @@ def _get_or_create_user(db: Session, email: str, name: str, role: GlobalRole) ->
 def seed(db: Session) -> None:
     settings = get_settings()
     if settings.is_production:
-        raise RuntimeError("Refusing to seed a production database")
+        # Compose runs the seed step by default; production never gets demo data (skip, don't fail).
+        print("Production environment: demo seed data skipped")
+        return
     division = db.scalar(select(Division).where(Division.name == "Japan Delivery Division 1"))
     if division is None:
         division = Division(name="Japan Delivery Division 1", description="Khối dự án khách hàng Nhật Bản")

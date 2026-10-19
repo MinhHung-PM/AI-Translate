@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from datetime import timedelta
 from functools import lru_cache
 from typing import Any
 from urllib.parse import urlencode
@@ -13,9 +14,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
 from app.api.deps import DB, Auth, client_ip
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError, Forbidden, NotAuthenticated, NotFound
 from app.core.security import new_token, pkce_challenge
+from app.db.base import utcnow
 from app.models import OidcLoginState, User
 from app.models.enums import GlobalRole
 from app.schemas.api import DevLoginIn, DevUserOut, SessionInfo, UserOut
@@ -66,7 +68,10 @@ def logout(auth: Auth, db: DB, response: Response) -> Response:
     revoke_session(db, auth.session)
     db.commit()
     response.status_code = 204
-    response.delete_cookie(get_settings().session_cookie_name, path="/")
+    s = get_settings()
+    response.delete_cookie(
+        s.session_cookie_name, path="/", secure=s.session_cookie_secure, httponly=True, samesite="lax"
+    )
     return response
 
 
@@ -117,10 +122,22 @@ def dev_login(body: DevLoginIn, request: Request, response: Response, db: DB) ->
 
 @lru_cache
 def _discovery(issuer: str) -> dict[str, Any]:
-    resp = httpx.get(issuer.rstrip("/") + "/.well-known/openid-configuration", timeout=10)
-    resp.raise_for_status()
-    data: dict[str, Any] = resp.json()
+    try:
+        resp = httpx.get(issuer.rstrip("/") + "/.well-known/openid-configuration", timeout=10)
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        # IdP unreachable or OIDC_ISSUER misconfigured: a clear message instead of a 500.
+        logger.warning("OIDC discovery failed: %s", type(exc).__name__)
+        raise SignInUnavailable(
+            "The sign-in service is unreachable. Try again later or contact the administrator."
+        ) from None
     return data
+
+
+class SignInUnavailable(AppError):
+    status_code = 503
+    code = "signin_unavailable"
 
 
 @lru_cache
@@ -157,6 +174,24 @@ def oidc_login(db: DB) -> RedirectResponse:
     return RedirectResponse(f"{meta['authorization_endpoint']}?{urlencode(params)}", status_code=302)
 
 
+def _allowed_identity(s: Settings, email: str, claims: dict[str, Any]) -> bool:
+    """Only the configured company tenants / e-mail domains may sign in (none configured = allowed,
+    which production refuses at startup)."""
+    domains = {d.lower().lstrip("@") for d in s.oidc_allowed_email_domains}
+    tenants = {t.lower() for t in s.oidc_allowed_tenant_ids}
+    if not domains and not tenants:
+        return True
+    if tenants and str(claims.get("tid") or "").lower() in tenants:
+        return True
+    if domains and email.rsplit("@", 1)[-1] in domains:
+        # Google accounts: also require a verified address of the hosted domain.
+        if claims.get("email_verified") is False:
+            return False
+        hd = claims.get("hd")
+        return hd is None or str(hd).lower() in domains
+    return False
+
+
 @router.get("/oidc/callback")
 def oidc_callback(request: Request, db: DB, code: str = "", state: str = "") -> RedirectResponse:
     _require_oidc()
@@ -165,8 +200,11 @@ def oidc_callback(request: Request, db: DB, code: str = "", state: str = "") -> 
     login_state = db.scalar(select(OidcLoginState).where(OidcLoginState.state == state)) if state else None
     if login_state is None or not code:
         raise NotAuthenticated("Invalid or expired login state")
+    expired = utcnow() - login_state.created_at > timedelta(minutes=10)
     db.delete(login_state)  # one-time use
     db.commit()
+    if expired:
+        raise NotAuthenticated("The sign-in took too long; please try again")
     meta = _discovery(s.oidc_issuer)
     try:
         token_resp = httpx.post(
@@ -201,6 +239,9 @@ def oidc_callback(request: Request, db: DB, code: str = "", state: str = "") -> 
     email = str(claims.get("email") or claims.get("preferred_username") or "").lower()
     if not email:
         raise AppError("The identity provider did not return an email address")
+    if not _allowed_identity(s, email, claims):
+        logger.warning("OIDC login refused: identity outside the allowed tenants/domains")
+        raise Forbidden("This account is not allowed to use this site. Ask your administrator for access.")
     user = db.scalar(select(User).where(User.oidc_subject == subject))
     if user is None:
         user = db.scalar(select(User).where(User.email == email))

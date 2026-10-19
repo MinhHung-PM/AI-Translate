@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     oidc_redirect_uri: str | None = None  # e.g. https://memohub.example.com/api/v1/auth/oidc/callback
     oidc_post_login_redirect: str = "/"
     oidc_default_role: Literal["member"] = "member"
+    # Who may sign in (checked on every OIDC login; at least one is required in production):
+    # company e-mail domains (e.g. "company.com") and/or Entra tenant ids (the "tid" claim).
+    oidc_allowed_email_domains: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    oidc_allowed_tenant_ids: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # --- Secret storage -------------------------------------------------
     # Keyring for AES-256-GCM encryption of user API keys.
@@ -160,7 +164,14 @@ class Settings(BaseSettings):
                 raise ValueError("INTEGRATION_*ENDPOINT_OVERRIDES must map provider names to base URLs")
         return value
 
-    @field_validator("cors_allowed_origins", "trusted_hosts", "provider_base_url_allowlist", mode="before")
+    @field_validator(
+        "cors_allowed_origins",
+        "trusted_hosts",
+        "provider_base_url_allowlist",
+        "oidc_allowed_email_domains",
+        "oidc_allowed_tenant_ids",
+        mode="before",
+    )
     @classmethod
     def _split_csv(cls, value: object) -> object:
         if isinstance(value, str):
@@ -192,6 +203,13 @@ class Settings(BaseSettings):
             [self.oidc_issuer, self.oidc_client_id, self.oidc_client_secret, self.oidc_redirect_uri]
         ):
             problems.append("OIDC_* settings are required in production")
+        if self.auth_mode == "oidc" and not (self.oidc_allowed_email_domains or self.oidc_allowed_tenant_ids):
+            problems.append(
+                "OIDC_ALLOWED_EMAIL_DOMAINS or OIDC_ALLOWED_TENANT_IDS is required in production "
+                "(otherwise anyone with an account at the identity provider could sign in)"
+            )
+        if not self.secret_storage_available:
+            problems.append("SECRET_ENCRYPTION_KEYS is required in production (python -m app.cli generate-key)")
         if "*" in self.trusted_hosts:
             problems.append("TRUSTED_HOSTS must be explicit in production")
         if self.allow_private_provider_urls:

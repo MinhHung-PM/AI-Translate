@@ -23,6 +23,26 @@ unless noted); **Implemented** = in code, not covered by an automated test.
 | — | SSRF on custom provider URLs | HTTPS only, no credentials in URL, DNS-resolved private/loopback/link-local/reserved addresses refused, optional host allow-list, redirects not followed | Implemented & tested |
 | — | Export injection | HTML export escapes all content; CSV cells starting with `= + - @` are neutralized | Implemented & tested |
 
+## Production checklist (public deployment)
+
+`ENVIRONMENT=production` refuses to start unless all of these hold (`Settings.validate_for_environment`):
+`AUTH_MODE=oidc` with all `OIDC_*` set, **`OIDC_ALLOWED_EMAIL_DOMAINS` and/or `OIDC_ALLOWED_TENANT_IDS`**
+(otherwise anyone with an account at the identity provider could sign in), `SESSION_COOKIE_SECURE=true`,
+`SECRET_ENCRYPTION_KEYS` set (`python -m app.cli generate-key`), explicit `TRUSTED_HOSTS` (the internal
+hosts `api`, `localhost`, `127.0.0.1` used by the Next.js proxy and the health check are always added), no
+mock provider, no private provider URLs, no integration endpoint overrides.
+
+* **Sign-in allow-list** is checked on every OIDC login: Entra tenant id (`tid`) or e-mail domain; for
+  Google accounts the address must not be unverified and the hosted domain (`hd`) must match. New users are
+  created as `member` with no project access. The OIDC login state expires after 10 minutes. An
+  unreachable / misconfigured identity provider returns 503 `signin_unavailable` (not a 500).
+* **First admin:** sign in once, then `docker compose exec api python -m app.cli make-admin you@company.com`.
+* **HTTPS is required** (Secure cookies): put a TLS reverse proxy or tunnel (e.g. Caddy, Cloudflare Tunnel)
+  in front of `127.0.0.1:3000`; never expose port 3000/8000 over plain HTTP.
+* API docs (`/api/docs`, `/api/v1/openapi.json`) are disabled in production. Demo seed data is skipped.
+* Set a strong `POSTGRES_PASSWORD` and back up the `pgdata` volume (`pg_dump`).
+* AI provider keys are per user: each colleague adds their own key in AI Settings.
+
 ## Roles
 
 | Capability | Member | Project Manager (membership `manager`) | Division Manager | Admin |
