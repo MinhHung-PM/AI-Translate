@@ -5900,6 +5900,15 @@
       "minItems": 1,
       "title": "Sources"
      },
+     "language_detection": {
+      "type": "string",
+      "enum": [
+       "auto",
+       "listed"
+      ],
+      "title": "Language Detection",
+      "default": "auto"
+     },
      "languages": {
       "anyOf": [
        {

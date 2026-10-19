@@ -75,12 +75,14 @@ Máy chủ
 
 ### Chất lượng nhận dạng
 
-* **Chọn đúng ngôn ngữ người nói** trên màn hình thu âm (mặc định: ngôn ngữ nguồn + đích của cuộc họp).
-  Model chỉ nhận dạng trong các ngôn ngữ này → tránh lỗi "ảo giác" ra tiếng Tây Ban Nha/Bồ Đào Nha… với
-  đoạn ngắn hoặc có tiếng ồn. Một ngôn ngữ = chính xác nhất.
+* **Ngôn ngữ đầu vào — mặc định "Tự nhận diện"** (`language_detection: "auto"`): không gửi `language` /
+  `languages` cho OpenAI; model tự nhận ra ngôn ngữ, kể cả nói xen (vd. từ tiếng Anh trong câu tiếng Nhật).
+  Phiên dịch trực tiếp (`gpt-realtime-translate`) luôn tự nhận diện, không có tùy chọn.
+* **"Chỉ định ngôn ngữ"** (`"listed"`): model chỉ nhận dạng trong các ngôn ngữ đã chọn → tránh lỗi "ảo giác"
+  ra tiếng Tây Ban Nha/Bồ Đào Nha… với đoạn ngắn hoặc phòng ồn. Một ngôn ngữ = chính xác nhất.
 * Thêm thuật ngữ và tên riêng vào **Glossary** của dự án và danh sách người tham gia: chúng được gửi làm
   `keywords` để nhận đúng tên người, tên hệ thống.
-* Model tách người nói (diarize) chưa hỗ trợ `languages`/`keywords`; với âm thanh cuộc họp, chọn đúng một
+* Model tách người nói (diarize) chưa hỗ trợ `languages`/`keywords`; với âm thanh cuộc họp, chỉ định đúng một
   ngôn ngữ nếu có thể.
 * Nhãn ngôn ngữ của mỗi câu là ngôn ngữ model thực sự nhận ra (không gán theo mặc định của cuộc họp).
 * Ghi chú "Lưu ý mơ hồ" của bản dịch luôn viết bằng tiếng Việt.

@@ -61,7 +61,10 @@ class AudioSourceIn(BaseModel):
 
 class AudioSessionIn(BaseModel):
     sources: list[AudioSourceIn] = Field(min_length=1)
-    # Languages that may be spoken (constrains recognition). Default: the meeting's languages.
+    # auto = the speech model detects the spoken language (also mixed-language speech);
+    # listed = recognition is constrained to ``languages`` (fewer mis-detections on noise).
+    language_detection: Literal["auto", "listed"] = "auto"
+    # Languages that may be spoken (``listed`` only). Default: the meeting's languages.
     languages: list[Literal["ja", "vi", "en"]] | None = Field(default=None, min_length=1, max_length=3)
     translate: bool = True
     # streaming = words appear while speaking (OpenAI Realtime over WebRTC);
@@ -204,9 +207,13 @@ def start_session(
 
         if meeting.target_language.value not in TRANSLATION_OUTPUT_LANGUAGES:
             raise ValidationFailed("Live interpretation does not support this meeting's target language")
-    languages = list(dict.fromkeys(body.languages or [])) or [
-        lang.value for lang in dict.fromkeys(x for x in (meeting.source_language, meeting.target_language) if x)
-    ]
+    languages = (
+        []
+        if body.language_detection == "auto"
+        else list(dict.fromkeys(body.languages or []))
+        or [lang.value for lang in dict.fromkeys(x for x in (meeting.source_language, meeting.target_language) if x)]
+        or ["ja", "vi", "en"]
+    )
     live = LiveSession(
         meeting_id=meeting.id,
         connector=CONNECTOR,
@@ -219,7 +226,8 @@ def start_session(
         capture_config={
             "sources": [s.model_dump() for s in body.sources],
             "translate": body.translate,
-            "languages": languages or ["ja", "vi", "en"],
+            "language_detection": body.language_detection,
+            "languages": languages,  # empty = auto-detect
             # Streaming needs a real provider; the MOCK only supports chunked mode.
             "mode": "chunked" if stt.is_mock else body.mode,
             "noise_suppression": body.noise_suppression,

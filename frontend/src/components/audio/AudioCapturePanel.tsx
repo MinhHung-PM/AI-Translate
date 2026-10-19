@@ -75,6 +75,8 @@ export function AudioCapturePanel({
   const [picked, setPicked] = useState<PickedSource[]>([]);
   const [consent, setConsent] = useState(false);
   const [translate, setTranslate] = useState(true);
+  // auto = the speech model detects the language itself (mixed-language speech too).
+  const [langMode, setLangMode] = useState<"auto" | "listed">("auto");
   const [langs, setLangs] = useState<Language[]>(defaultLanguages.length ? defaultLanguages : ALL_LANGS);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [stats, setStats] = useState<Record<string, SourceStats>>({});
@@ -323,6 +325,7 @@ export function AudioCapturePanel({
       const res = await api.post<AudioSession>(`/meetings/${meetingId}/audio-sessions`, {
         sources: picked.map((p) => ({ id: p.id, kind: p.kind, label: p.label.trim() || p.id, single_speaker: p.singleSpeaker })),
         translate,
+        language_detection: langMode,
         languages: langs,
         mode: !streamingWanted ? "chunked" : latency === "interpret" ? "interpret" : "streaming",
         noise_suppression: noise,
@@ -490,18 +493,43 @@ export function AudioCapturePanel({
 
             <section>
               <h3 className="mb-1 font-medium">{t.audio.languages}</h3>
-              <div className="flex flex-wrap gap-4" data-testid="audio-languages">
-                {ALL_LANGS.map((l) => (
-                  <Checkbox
-                    key={l}
-                    label={t.languages[l]}
-                    checked={langs.includes(l)}
-                    disabled={langs.length === 1 && langs.includes(l)}
-                    onChange={(e) => setLangs(e.target.checked ? ALL_LANGS.filter((x) => x === l || langs.includes(x)) : langs.filter((x) => x !== l))}
-                  />
-                ))}
-              </div>
-              <p className="mt-1 text-xs text-muted">{t.audio.languagesHint}</p>
+              {streamingWanted && latency === "interpret" ? (
+                <p className="text-xs text-muted" data-testid="audio-languages-auto">{t.audio.languageDetect.interpret}</p>
+              ) : (
+                <>
+                  <div className="mb-2 flex flex-wrap gap-2" role="radiogroup" aria-label={t.audio.languages} data-testid="language-detection">
+                    {(["auto", "listed"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        role="radio"
+                        aria-checked={langMode === m}
+                        onClick={() => setLangMode(m)}
+                        className={
+                          "rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition-colors " +
+                          (langMode === m ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
+                        }
+                      >
+                        {t.audio.languageDetect[m]}
+                      </button>
+                    ))}
+                  </div>
+                  {langMode === "listed" && (
+                    <div className="flex flex-wrap gap-4" data-testid="audio-languages">
+                      {ALL_LANGS.map((l) => (
+                        <Checkbox
+                          key={l}
+                          label={t.languages[l]}
+                          checked={langs.includes(l)}
+                          disabled={langs.length === 1 && langs.includes(l)}
+                          onChange={(e) => setLangs(e.target.checked ? ALL_LANGS.filter((x) => x === l || langs.includes(x)) : langs.filter((x) => x !== l))}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1 text-xs text-muted">{langMode === "auto" ? t.audio.languageDetect.autoHint : t.audio.languagesHint}</p>
+                </>
+              )}
             </section>
 
             <section>

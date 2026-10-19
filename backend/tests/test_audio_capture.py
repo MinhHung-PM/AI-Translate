@@ -311,7 +311,7 @@ def openai_stt(pm):
 
 def test_openai_diarization_contract_and_speaker_references(pm, db, openai_stt, caplog):
     meeting = create_meeting(pm, source_language="ja")
-    out = start(pm, meeting["id"], languages=["ja"])
+    out = start(pm, meeting["id"], language_detection="listed", languages=["ja"])
     sid = out["session"]["id"]
     assert out["session"]["is_demo"] is False and out["session"]["provider_session_id"] == "gpt-4o-transcribe-diarize"
 
@@ -358,7 +358,7 @@ def test_openai_errors_are_safe_and_recorded(pm, db, openai_stt):
 
 def test_microphone_uses_language_constrained_text_model(pm, openai_stt):
     meeting = create_meeting(pm, source_language="vi", target_language="ja", participants=[{"display_name": "Tanaka"}])
-    out = start(pm, meeting["id"])
+    out = start(pm, meeting["id"], language_detection="listed")
     assert out["session"]["capture_config"]["languages"] == ["vi", "ja"]
     entries = chunk(pm, out["session"]["id"], "mic", 0, make_wav(2.0)).json()["entries"]
     req = openai_stt.requests[0]
@@ -373,7 +373,7 @@ def test_microphone_uses_language_constrained_text_model(pm, openai_stt):
 def test_text_model_falls_back_when_unavailable(pm, openai_stt):
     openai_stt.text_model_available = False
     meeting = create_meeting(pm, participants=[{"display_name": "Tanaka"}])
-    sid = start(pm, meeting["id"], languages=["vi"])["session"]["id"]
+    sid = start(pm, meeting["id"], language_detection="listed", languages=["vi"])["session"]["id"]
     e = chunk(pm, sid, "mic", 0, make_wav(2.0)).json()["entries"]
     assert [r["model"] for r in openai_stt.requests] == [["gpt-transcribe"], ["gpt-4o-transcribe"]]
     fallback = openai_stt.requests[1]
@@ -484,7 +484,9 @@ def test_streaming_token_is_ephemeral_and_configured(pm, realtime, caplog):
 
 def test_streaming_latency_modes(pm, realtime):
     meeting = create_meeting(pm, participants=[{"display_name": "Tanaka"}])
-    sid = start(pm, meeting["id"], languages=["ja"], caption_latency="fast")["session"]["id"]
+    sid = start(pm, meeting["id"], language_detection="listed", languages=["ja"], caption_latency="fast")["session"][
+        "id"
+    ]
     tok = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).json()
     tr = realtime.bodies[-1]["session"]["audio"]["input"]["transcription"]
     assert tok["model"] == "gpt-realtime-whisper" and tr == {
@@ -493,7 +495,9 @@ def test_streaming_latency_modes(pm, realtime):
         "delay": "minimal",
     }
     pm.post(f"/audio-sessions/{sid}/stop")
-    sid = start(pm, meeting["id"], languages=["ja", "vi"], caption_latency="accurate")["session"]["id"]
+    sid = start(pm, meeting["id"], language_detection="listed", languages=["ja", "vi"], caption_latency="accurate")[
+        "session"
+    ]["id"]
     tok = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).json()
     session = realtime.bodies[-1]["session"]
     tr = session["audio"]["input"]["transcription"]
@@ -506,7 +510,7 @@ def test_streaming_model_fallback(pm, realtime):
     realtime.whisper_available = False
     realtime.live_model_available = False
     meeting = create_meeting(pm)
-    sid = start(pm, meeting["id"], languages=["ja"])["session"]["id"]
+    sid = start(pm, meeting["id"], language_detection="listed", languages=["ja"])["session"]["id"]
     tok = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).json()
     assert tok["model"] == "gpt-4o-transcribe" and tok["client_commits"] is False
     assert [b["session"]["audio"]["input"]["transcription"]["model"] for b in realtime.bodies] == [
@@ -730,3 +734,22 @@ def test_interpret_mode_falls_back_to_chunked_on_mock(pm):
     meeting = create_meeting(pm)
     out = start(pm, meeting["id"], mode="interpret")
     assert out["session"]["capture_config"]["mode"] == "chunked"
+
+
+def test_auto_language_detection_sends_no_language_constraint(pm, openai_stt):
+    meeting = create_meeting(pm, source_language="ja", target_language="vi", participants=[{"display_name": "Tanaka"}])
+    out = start(pm, meeting["id"], languages=["ja"])  # default: auto — the list is ignored
+    cfg = out["session"]["capture_config"]
+    assert cfg["language_detection"] == "auto" and cfg["languages"] == []
+    chunk(pm, out["session"]["id"], "mic", 0, make_wav(2.0))
+    req = openai_stt.requests[0]
+    assert "languages[]" not in req and "language" not in req
+    assert "Tanaka" in req["keywords[]"]  # glossary/names still guide recognition
+
+
+def test_auto_language_detection_in_streaming_session(pm, realtime):
+    meeting = create_meeting(pm, source_language="ja", target_language="vi")
+    sid = start(pm, meeting["id"], caption_latency="accurate")["session"]["id"]
+    assert pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "mic"}).status_code == 200
+    tr = realtime.bodies[-1]["session"]["audio"]["input"]["transcription"]
+    assert "languages" not in tr and "language" not in tr

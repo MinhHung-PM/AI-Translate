@@ -145,6 +145,12 @@ test("Streaming captions: interim words appear while speaking, final sentence is
   await tid(page, "audio-consent").check();
   await expect(tid(page, "audio-streaming")).toBeChecked();
   await tid(page, "caption-latency").getByRole("radio", { name: "Phụ đề cân bằng" }).click();
+  // Captions default to automatic language detection; the language list appears only when asked for.
+  await expect(tid(page, "language-detection").getByRole("radio", { name: /Tự nhận diện/ })).toHaveAttribute("aria-checked", "true");
+  await expect(tid(page, "audio-languages")).toHaveCount(0);
+  await tid(page, "language-detection").getByRole("radio", { name: "Chỉ định ngôn ngữ" }).click();
+  await expect(tid(page, "audio-languages")).toBeVisible();
+  await tid(page, "language-detection").getByRole("radio", { name: /Tự nhận diện/ }).click();
   await tid(page, "start-audio").click();
 
   await expect(tid(page, "audio-sources-live")).toContainText("Đang truyền", { timeout: 20_000 });
@@ -253,12 +259,15 @@ test("Live interpretation: translated words stream in with the original, sentenc
   // Live interpretation is the default streaming mode.
   await expect(tid(page, "caption-latency").getByRole("radio", { name: /Phiên dịch trực tiếp/ })).toHaveAttribute("aria-checked", "true");
   await expect(tid(page, "play-voice")).not.toBeChecked();
+  // Interpretation always detects the input language: no language picker.
+  await expect(tid(page, "audio-languages-auto")).toBeVisible();
+  await expect(tid(page, "audio-languages")).toHaveCount(0);
   await tid(page, "start-audio").click();
 
   await expect(tid(page, "interim-captions")).toContainText("Xin chào", { timeout: 20_000 });
   await expect(tid(page, "interim-original")).toContainText("皆さん");
   await expect.poll(() => segments.length, { timeout: 20_000 }).toBe(1);
-  expect(sessionBodies[0]).toMatchObject({ mode: "interpret", caption_latency: "balanced" });
+  expect(sessionBodies[0]).toMatchObject({ mode: "interpret", caption_latency: "balanced", language_detection: "auto" });
   expect(auth).toBe("Bearer ek_tr_fake");
   expect(segments[0]).toMatchObject({
     text: "皆さん、こんにちは。",

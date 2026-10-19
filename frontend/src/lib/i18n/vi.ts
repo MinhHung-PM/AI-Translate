@@ -588,6 +588,13 @@ export const vi = {
     echoTipLive: "Một số câu bị thu bởi hai nguồn cùng lúc (ví dụ micro nghe được loa, hoặc cùng một tab được chọn hai lần) — hệ thống đã tự bỏ bản trùng. Để gọn hơn: đeo tai nghe hoặc bỏ bớt nguồn trùng.",
     conn: { connecting: "Đang kết nối", connected: "Đang truyền", reconnecting: "Đang kết nối lại", failed: "Mất kết nối", closed: "Đã đóng" },
     languages: "Ngôn ngữ người nói trong cuộc họp",
+    languageDetect: {
+      auto: "Tự nhận diện (khuyên dùng)",
+      listed: "Chỉ định ngôn ngữ",
+      autoHint:
+        "Mô hình tự nhận ra ngôn ngữ đang nói — kể cả khi nói xen tiếng Anh trong câu tiếng Nhật/Việt. Nếu phòng ồn mà xuất hiện chữ ngôn ngữ lạ, hãy chuyển sang \"Chỉ định ngôn ngữ\".",
+      interpret: "Phiên dịch trực tiếp luôn tự nhận diện ngôn ngữ đầu vào (hơn 70 ngôn ngữ, kể cả nói xen) — không cần chọn.",
+    },
     languagesHint: "Chỉ chọn các ngôn ngữ thực sự được nói: hệ thống chỉ nhận dạng trong các ngôn ngữ này, tránh nhận nhầm sang ngôn ngữ khác. Chọn 1 ngôn ngữ cho kết quả chính xác nhất.",
     consent: "Tôi đã thông báo cho những người tham gia rằng âm thanh cuộc họp được ghi nhận để nhận dạng và dịch.",
     start: "Bắt đầu thu âm",
