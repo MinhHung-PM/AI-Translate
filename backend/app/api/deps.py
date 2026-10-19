@@ -64,9 +64,15 @@ def get_auth(request: Request, db: DB) -> AuthContext:
 Auth = Annotated[AuthContext, Depends(get_auth)]
 
 
+def rate_key(auth: AuthContext) -> str:
+    """Rate limits apply per user — per browser session on a shared team site, where everyone
+    signs in as the same shared account."""
+    return f"s{auth.session.id}" if get_settings().auth_mode == "shared" else str(auth.user.id)
+
+
 def ai_rate_limit(bucket: str) -> Callable[[AuthContext], AuthContext]:
     def _check(auth: Auth) -> AuthContext:
-        rate_limiter.check(f"{bucket}:{auth.user.id}", get_settings().ai_rate_limit_per_minute)
+        rate_limiter.check(f"{bucket}:{rate_key(auth)}", get_settings().ai_rate_limit_per_minute)
         return auth
 
     return _check

@@ -12,14 +12,15 @@ import jwt
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from app.api.deps import DB, Auth, client_ip
+from app.api.deps import DB, Auth, client_ip, get_auth
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, Forbidden, NotAuthenticated, NotFound
 from app.core.security import new_token, pkce_challenge
 from app.db.base import utcnow
-from app.models import OidcLoginState, User
-from app.models.enums import GlobalRole
+from app.models import OidcLoginState, Project, ProjectMembership, User
+from app.models.enums import GlobalRole, ProjectRole
 from app.schemas.api import DevLoginIn, DevUserOut, SessionInfo, UserOut
 from app.services.audit import record_audit
 from app.services.sessions import create_session, revoke_session
@@ -48,16 +49,48 @@ def _features() -> dict[str, bool]:
         "secret_storage": s.secret_storage_available,
         "mock_provider": s.enable_mock_provider,
         "dev_auth": s.auth_mode == "dev",
+        # No sign-in; AI keys are managed on the server (the AI settings menu is hidden).
+        "shared_mode": s.auth_mode == "shared",
+        "server_openai": bool(s.openai_api_key),
+        "server_soniox": bool(s.soniox_api_key),
     }
 
 
+def _shared_user(db: Session) -> User:
+    s = get_settings()
+    user = db.scalar(select(User).where(User.email == s.shared_user_email))
+    if user is None:
+        # Project managers can create projects and run every meeting workflow; not an admin.
+        user = User(email=s.shared_user_email, display_name=s.shared_user_name, role=GlobalRole.project_manager)
+        db.add(user)
+        db.flush()
+        # A ready-to-use project, so colleagues can start a live translation right away.
+        if db.scalar(select(Project).where(Project.code == "CHUNG")) is None:
+            project = Project(code="CHUNG", name="Dự án chung", created_by_id=user.id)
+            db.add(project)
+            db.flush()
+            db.add(ProjectMembership(project_id=project.id, user_id=user.id, role=ProjectRole.manager))
+    return user
+
+
 @router.get("/me", response_model=SessionInfo)
-def me(auth: Auth) -> SessionInfo:
+def me(request: Request, response: Response, db: DB) -> SessionInfo:
+    try:
+        auth = get_auth(request, db)
+        user, session = auth.user, auth.session
+    except NotAuthenticated:
+        if get_settings().auth_mode != "shared":
+            raise
+        # No sign-in on a shared team site: every browser gets a session for the shared account.
+        user = _shared_user(db)
+        token, session = create_session(db, user, client_ip(request), request.headers.get("user-agent"))
+        db.commit()
+        _set_cookie(response, token)
     return SessionInfo(
-        user=UserOut.model_validate(auth.user),
-        csrf_token=auth.session.csrf_token,
+        user=UserOut.model_validate(user),
+        csrf_token=session.csrf_token,
         auth_mode=get_settings().auth_mode,
-        expires_at=auth.session.expires_at,
+        expires_at=session.expires_at,
         features=_features(),
     )
 

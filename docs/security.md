@@ -43,6 +43,16 @@ mock provider, no private provider URLs, no integration endpoint overrides.
 * Set a strong `POSTGRES_PASSWORD` and back up the `pgdata` volume (`pg_dump`).
 * AI provider keys are per user: each colleague adds their own key in AI Settings.
 
+### Shared team site on the company network (`AUTH_MODE=shared`, `start-lan.ps1`)
+
+No sign-in: every browser gets a session for one shared account ("Nhóm dùng chung", project manager,
+not admin), so everyone on the network can read and change all data — use only on a trusted internal
+network, never exposed to the Internet. AI keys come from the server (`OPENAI_API_KEY`, `SONIOX_API_KEY`,
+required in production) and are never sent to browsers (only ephemeral Realtime/Soniox keys are);
+provider-configuration writes are refused (403) and the AI settings menu is hidden. Rate limits apply
+per browser session. HTTPS on the LAN IP is served by Caddy with its internal CA (`deploy/Caddyfile`,
+compose profile `lan`); the root certificate is offered at `http://<ip>/ca.crt`.
+
 ## Roles
 
 | Capability | Member | Project Manager (membership `manager`) | Division Manager | Admin |

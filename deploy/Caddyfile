@@ -1,0 +1,27 @@
+# HTTPS for the company network (docker compose --profile lan, see docs/deploy-lan-vi.md).
+# Browsers only allow the microphone and screen/tab audio on HTTPS pages, so the site is served over
+# HTTPS on the server's LAN IP with a certificate from Caddy's own local CA ("tls internal").
+{
+	# Browsers send no SNI when the site is opened by IP address.
+	default_sni {$LAN_HOST}
+	skip_install_trust
+}
+
+https://{$LAN_HOST} {
+	tls internal
+	encode gzip
+	reverse_proxy web:3000
+}
+
+http://{$LAN_HOST} {
+	# Colleagues download the site's root certificate here once, to remove the browser warning.
+	handle /ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Disposition "attachment; filename=memohub-ca.crt"
+		file_server
+	}
+	handle {
+		redir https://{host}:{$LAN_HTTPS_PORT}{uri}
+	}
+}

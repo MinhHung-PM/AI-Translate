@@ -215,7 +215,13 @@ class ResolvedProvider:
 def resolve_provider(
     db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None, config_id: uuid.UUID | None = None
 ) -> ResolvedProvider:
-    """Find the user's provider (explicit or default) and decrypt its key."""
+    """Find the user's provider (explicit or default) and decrypt its key. In "shared" mode
+    everyone uses the server key; otherwise the server key is the fallback."""
+    if get_settings().auth_mode == "shared":
+        server = server_provider()
+        if server is None:
+            raise ProviderNotConfigured("The site administrator has not configured the OpenAI key (OPENAI_API_KEY).")
+        return server
     q = select(AIProviderConfiguration).where(AIProviderConfiguration.user_id == user_id)
     q = (
         q.where(AIProviderConfiguration.id == config_id)
@@ -224,6 +230,9 @@ def resolve_provider(
     )
     config = db.scalar(q)
     if config is None:
+        server = None if config_id else server_provider()
+        if server is not None:
+            return server
         raise ProviderNotConfigured("No AI provider is configured. Open Settings to choose a provider.")
     info = get_catalog().get(config.provider)
     if info is None:
@@ -238,6 +247,21 @@ def resolve_provider(
     creds = Credentials(api_key=api_key, base_url=config.base_url or info.default_base_url)
     return ResolvedProvider(
         info=info, config=config, model=config.model, credentials=creds, key_source="byok" if api_key else "none"
+    )
+
+
+def server_provider() -> ResolvedProvider | None:
+    """OpenAI with the server-wide key (OPENAI_API_KEY), if configured."""
+    s = get_settings()
+    info = get_catalog().get("openai")
+    if not s.openai_api_key or info is None:
+        return None
+    return ResolvedProvider(
+        info=info,
+        config=None,
+        model=s.server_ai_model,
+        credentials=Credentials(api_key=s.openai_api_key, base_url=info.default_base_url),
+        key_source="server",
     )
 
 

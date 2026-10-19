@@ -44,6 +44,11 @@ Cần thêm OpenAI (kèm API key) trong *Cài đặt AI*; nếu chưa có sẽ c
 (Windows: `.\start.ps1 sandbox`). Lệnh này chạy thêm máy chủ giả lập, gắn nhãn SANDBOX và chỉ dùng để
 thử nghiệm. Hướng dẫn từng bước: [`docs/integrations/sandbox-vi.md`](docs/integrations/sandbox-vi.md).
 
+### Site cho đồng nghiệp trong mạng công ty (IP 10.x, không đăng nhập)
+
+`.\start-lan.ps1` — HTTPS trên IP máy bạn, mọi người dùng chung API key của bạn (lưu trên máy chủ), ẩn
+menu Cài đặt AI. Hướng dẫn: [docs/deploy-lan-vi.md](docs/deploy-lan-vi.md).
+
 ## Quick start (Docker Compose)
 
 ```bash

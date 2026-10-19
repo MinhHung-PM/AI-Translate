@@ -12,7 +12,7 @@ from app.ai.catalog import get_catalog
 from app.api.deps import DB, Auth, AuthContext, ai_rate_limit
 from app.audio import soniox
 from app.core.config import get_settings
-from app.core.errors import NotFound, ProviderNotConfigured, ValidationFailed
+from app.core.errors import Forbidden, NotFound, ProviderNotConfigured, ValidationFailed
 from app.db.base import utcnow
 from app.models import AIProviderConfiguration
 from app.schemas.api import (
@@ -35,6 +35,11 @@ def _out(db: DB, auth: AuthContext, config: AIProviderConfiguration) -> Provider
     out = ProviderConfigOut.model_validate(config)
     out.has_usable_key = bool(info and not info.requires_api_key) or svc.session_has_key(db, config, auth.session.id)
     return out
+
+
+def _not_shared() -> None:
+    if get_settings().auth_mode == "shared":
+        raise Forbidden("AI keys on this site are managed by the administrator")
 
 
 def _own_config(db: DB, auth: AuthContext, config_id: uuid.UUID) -> AIProviderConfiguration:
@@ -61,6 +66,7 @@ def list_configs(auth: Auth, db: DB) -> list[ProviderConfigOut]:
 
 @router.put("/configs", response_model=ProviderConfigOut)
 def save_config(body: ProviderConfigIn, auth: Auth, db: DB) -> ProviderConfigOut:
+    _not_shared()
     config = svc.upsert_config(
         db,
         auth.user,
@@ -92,6 +98,7 @@ def save_config(body: ProviderConfigIn, auth: Auth, db: DB) -> ProviderConfigOut
 
 @router.post("/configs/{config_id}/default", response_model=ProviderConfigOut)
 def make_default(config_id: uuid.UUID, auth: Auth, db: DB) -> ProviderConfigOut:
+    _not_shared()
     config = _own_config(db, auth, config_id)
     info = get_catalog().get(config.provider)
     if info is not None and svc.is_speech_only(info):
@@ -104,6 +111,7 @@ def make_default(config_id: uuid.UUID, auth: Auth, db: DB) -> ProviderConfigOut:
 
 @router.delete("/configs/{config_id}/key", response_model=ProviderConfigOut)
 def remove_key(config_id: uuid.UUID, auth: Auth, db: DB) -> ProviderConfigOut:
+    _not_shared()
     config = _own_config(db, auth, config_id)
     svc.remove_key(db, config)
     record_audit(
@@ -121,6 +129,7 @@ def remove_key(config_id: uuid.UUID, auth: Auth, db: DB) -> ProviderConfigOut:
 
 @router.delete("/configs/{config_id}", status_code=204)
 def delete_config(config_id: uuid.UUID, auth: Auth, db: DB) -> None:
+    _not_shared()
     config = _own_config(db, auth, config_id)
     was_default = config.is_default
     db.delete(config)  # cascades to session secrets

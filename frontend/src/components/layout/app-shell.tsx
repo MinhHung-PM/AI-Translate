@@ -38,7 +38,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  const items = session.user.role === "admin" ? [...NAV, { href: "/admin", label: t.nav.admin, icon: Shield }] : NAV;
+  // Shared team site (no sign-in): AI keys are managed on the server, so no AI settings / sign-out.
+  const shared = !!session.features.shared_mode;
+  const base = shared ? NAV.filter((n) => n.href !== "/settings") : NAV;
+  const items = session.user.role === "admin" ? [...base, { href: "/admin", label: t.nav.admin, icon: Shield }] : base;
 
   return (
     <div className="flex min-h-screen">
@@ -78,9 +81,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </p>
           <p className="text-white/60">{t.roles[session.user.role]}</p>
           {session.auth_mode === "dev" && <p className="mt-1 font-bold text-brand-500">DEV AUTH</p>}
+{!shared && (
           <button type="button" onClick={() => void logout()} className="mt-2 inline-flex items-center gap-1 text-white/60 hover:text-white">
             <LogOut className="size-3.5" aria-hidden /> {t.nav.logout}
           </button>
+          )}
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">

@@ -1,4 +1,6 @@
 # Local development stack: PostgreSQL, API, background worker, web UI.
+# Company-network site (HTTPS on the LAN IP, no sign-in): .\start-lan.ps1 (profile "lan", see
+# docs/deploy-lan-vi.md).
 # Redis is NOT required: background jobs use a PostgreSQL-backed queue.
 #   cp .env.example .env    # then set SECRET_ENCRYPTION_KEYS (see README)
 #   docker compose up --build
@@ -19,11 +21,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
   migrate:
     build: ./backend
     image: memohub-backend:local
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+psycopg://memohub:${POSTGRES_PASSWORD:-memohub}@db:5432/memohub
     command: ["sh", "-c", "alembic upgrade head && if [ \"$${SEED_DEMO_DATA:-true}\" = \"true\" ]; then python -m app.cli seed; fi"]
@@ -35,7 +38,7 @@ services:
   api:
     build: ./backend
     image: memohub-backend:local
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+psycopg://memohub:${POSTGRES_PASSWORD:-memohub}@db:5432/memohub
     depends_on:
@@ -43,15 +46,17 @@ services:
         condition: service_completed_successfully
     ports:
       - "127.0.0.1:8000:8000"
+    restart: unless-stopped
 
   worker:
     build: ./backend
     image: memohub-backend:local
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+psycopg://memohub:${POSTGRES_PASSWORD:-memohub}@db:5432/memohub
       EMBEDDED_WORKER: "false"
     command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
     healthcheck:
       disable: true
     depends_on:
@@ -69,6 +74,25 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+  # HTTPS reverse proxy for the company network (only with --profile lan).
+  caddy:
+    image: caddy:2.8.4-alpine
+    profiles: ["lan"]
+    environment:
+      LAN_HOST: ${LAN_HOST:-localhost}
+      LAN_HTTPS_PORT: ${LAN_HTTPS_PORT:-443}
+    ports:
+      - "${LAN_HTTPS_PORT:-443}:443"
+      - "${LAN_HTTP_PORT:-80}:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - web
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  caddy_data:

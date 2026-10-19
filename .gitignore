@@ -29,3 +29,7 @@ next-env.d.ts
 .DS_Store
 .idea/
 .vscode/
+
+# Company-network site (start-lan.ps1)
+memohub-ca.crt
+backups/

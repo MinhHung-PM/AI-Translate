@@ -342,6 +342,7 @@ export const vi = {
     removeKey: "Xóa API key",
     removeConfig: "Xóa cấu hình",
     capabilities: "Khả năng hỗ trợ",
+    sharedManaged: "Trên site dùng chung này, API key AI do quản trị viên cài đặt trên máy chủ — bạn không cần cấu hình gì.",
     speechOnly:
       "Nhà cung cấp này chỉ dùng cho nhận dạng giọng nói / phiên dịch trực tiếp (chọn trên màn hình Dịch trực tiếp). Dịch văn bản và tạo biên bản vẫn dùng nhà cung cấp mặc định.",
     configured: "Cấu hình của tôi",

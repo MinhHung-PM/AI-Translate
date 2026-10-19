@@ -25,6 +25,14 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    // Shared team site: /auth/me signs the browser in by itself — go straight to the app.
+    api
+      .get<SessionInfo>("/auth/me")
+      .then((s) => {
+        setSession(s);
+        router.replace("/");
+      })
+      .catch(() => undefined);
     api
       .get<DevUser[]>("/auth/dev/users")
       .then((users) => {
@@ -33,7 +41,7 @@ export default function LoginPage() {
         setMode("dev");
       })
       .catch((err) => setMode(err instanceof ApiError && err.status === 404 ? "oidc" : "oidc"));
-  }, []);
+  }, [router, setSession]);
 
   async function devLogin() {
     setBusy(true);

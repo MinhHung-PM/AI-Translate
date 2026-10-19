@@ -12,6 +12,7 @@ import type { Utterance } from "@/lib/audio/segmenter";
 import { encodeWav } from "@/lib/audio/wav";
 import { errorMessage } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
+import { useSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
 import type { AudioChunkResult, AudioSession, AudioSpeaker, Language, LiveSession, ProviderConfig } from "@/lib/types";
 
@@ -98,7 +99,9 @@ export function AudioCapturePanel({
   // Live speech provider: OpenAI Realtime (WebRTC) or Soniox (WebSocket; key added in AI Settings).
   const [sttProvider, setSttProvider] = useState<"openai" | "soniox">("openai");
   const providerConfigs = useApi<ProviderConfig[]>("/providers/configs");
-  const sonioxReady = !!providerConfigs.data?.some((c) => c.provider === "soniox" && c.has_usable_key);
+  const { session: me } = useSession();
+  // Soniox is usable with the user's own key, or the server's key on a shared team site.
+  const sonioxReady = !!me?.features.server_soniox || !!providerConfigs.data?.some((c) => c.provider === "soniox" && c.has_usable_key);
   const soniox = streamingWanted && sttProvider === "soniox";
   const voices = useRef(new Map<string, HTMLAudioElement>());
   const [gates, setGates] = useState<Record<string, boolean>>({});

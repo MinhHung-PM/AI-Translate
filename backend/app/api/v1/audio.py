@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
-from app.api.deps import DB, Auth, AuthContext
+from app.api.deps import DB, Auth, AuthContext, rate_key
 from app.api.v1.transcripts import entry_out
 from app.audio.soniox import SonioxToken
 from app.core.config import get_settings
@@ -26,7 +26,7 @@ router = APIRouter(tags=["audio"])
 
 
 def _audio_rate_limit(auth: Auth) -> AuthContext:
-    rate_limiter.check(f"audio:{auth.user.id}", get_settings().audio_rate_limit_per_minute)
+    rate_limiter.check(f"audio:{rate_key(auth)}", get_settings().audio_rate_limit_per_minute)
     return auth
 
 

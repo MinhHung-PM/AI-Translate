@@ -150,14 +150,20 @@ def _is_echo(
 def resolve_stt(db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None) -> tuple[SpeechToText, str]:
     """The user's OpenAI configuration provides speech-to-text. Without one, the
     deterministic MOCK is used only where the mock provider is allowed."""
+    from app.services.provider_config import server_provider
+
     settings = get_settings()
-    config = db.scalar(
-        select(AIProviderConfiguration).where(
-            AIProviderConfiguration.user_id == user_id, AIProviderConfiguration.provider == "openai"
+    config = (
+        None
+        if settings.auth_mode == "shared"  # everyone uses the server key
+        else db.scalar(
+            select(AIProviderConfiguration).where(
+                AIProviderConfiguration.user_id == user_id, AIProviderConfiguration.provider == "openai"
+            )
         )
     )
-    if config is not None:
-        resolved = resolve_provider(db, user_id, session_id, config.id)
+    resolved = resolve_provider(db, user_id, session_id, config.id) if config is not None else server_provider()
+    if resolved is not None:
         return (
             OpenAIDiarizingSTT(
                 resolved.credentials,
@@ -166,7 +172,7 @@ def resolve_stt(db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None) -
                 text_model=settings.stt_text_model,
                 text_fallback_model=settings.stt_text_fallback_model,
             ),
-            "byok",
+            resolved.key_source,
         )
     if settings.enable_mock_provider:
         return MockSTT(), "none"
@@ -176,12 +182,20 @@ def resolve_stt(db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None) -
 
 
 def resolve_soniox(db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None) -> Credentials:
+    settings = get_settings()
+    server = Credentials(api_key=settings.soniox_api_key, base_url="https://api.soniox.com/v1")
+    if settings.auth_mode == "shared":
+        if not settings.soniox_api_key:
+            raise ProviderNotConfigured("Soniox is not configured on this site (SONIOX_API_KEY).")
+        return server
     config = db.scalar(
         select(AIProviderConfiguration).where(
             AIProviderConfiguration.user_id == user_id, AIProviderConfiguration.provider == "soniox"
         )
     )
     if config is None:
+        if settings.soniox_api_key:
+            return server
         raise ProviderNotConfigured("Soniox needs an API key. Add Soniox in AI Settings (Cài đặt AI).")
     return resolve_provider(db, user_id, session_id, config.id).credentials
 

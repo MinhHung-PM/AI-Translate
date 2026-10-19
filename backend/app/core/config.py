@@ -28,7 +28,16 @@ class Settings(BaseSettings):
     # --- Authentication -------------------------------------------------
     # "dev" lets a developer pick a seeded user without a password. It is
     # refused at startup when environment == "production".
-    auth_mode: Literal["dev", "oidc"] = "oidc"
+    # "shared" = no sign-in: every visitor uses one shared team account (for a site reachable only
+    # inside the company network). AI keys then come from the server (OPENAI_API_KEY / SONIOX_API_KEY).
+    auth_mode: Literal["dev", "oidc", "shared"] = "oidc"
+    shared_user_email: str = "team@memohub.local"
+    shared_user_name: str = "Nhóm dùng chung"
+    # Server-wide AI keys (never sent to browsers). Used by everyone in "shared" mode, and as a
+    # fallback for users without their own provider configuration otherwise.
+    openai_api_key: str = ""
+    server_ai_model: str = "gpt-4.1-mini"  # translation + memo model with the server key
+    soniox_api_key: str = ""
     session_ttl_minutes: int = 8 * 60
     session_cookie_name: str = "memohub_session"
     session_cookie_secure: bool = True
@@ -203,6 +212,8 @@ class Settings(BaseSettings):
             [self.oidc_issuer, self.oidc_client_id, self.oidc_client_secret, self.oidc_redirect_uri]
         ):
             problems.append("OIDC_* settings are required in production")
+        if self.auth_mode == "shared" and not self.openai_api_key:
+            problems.append("OPENAI_API_KEY is required when AUTH_MODE=shared (everyone uses the server key)")
         if self.auth_mode == "oidc" and not (self.oidc_allowed_email_domains or self.oidc_allowed_tenant_ids):
             problems.append(
                 "OIDC_ALLOWED_EMAIL_DOMAINS or OIDC_ALLOWED_TENANT_IDS is required in production "

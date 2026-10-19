@@ -5,12 +5,14 @@ import { Alert, Badge, Button, Card, Checkbox, Field, Input, PageHeader, Select,
 import { api } from "@/lib/api";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
+import { useSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
 import type { ProviderConfig, ProviderSettings } from "@/lib/types";
 
 const CUSTOM = "__custom__";
 
 export default function SettingsPage() {
+  const shared = !!useSession().session?.features.shared_mode;
   const settings = useApi<ProviderSettings>("/providers");
   const configs = useApi<ProviderConfig[]>("/providers/configs");
   const [selected, setSelected] = useState("");
@@ -88,6 +90,15 @@ export default function SettingsPage() {
 
   if (!settings.data || !configs.data) return <Spinner label={t.common.loading} />;
   const s = settings.data;
+
+  if (shared) {
+    return (
+      <>
+        <PageHeader title={t.settings.title} />
+        <Alert tone="info">{t.settings.sharedManaged}</Alert>
+      </>
+    );
+  }
 
   return (
     <>
