@@ -344,6 +344,8 @@ def _known_speakers(db: Session, live: LiveSession, source_id: str) -> list[tupl
 
 
 def _new_profile(db: Session, live: LiveSession, source_id: str, reference: PcmAudio | None) -> AudioSpeakerProfile:
+    # Speaker numbers are session-wide (MAX+1) while sources are processed in parallel.
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"speakers:{live.id}"})
     ordinal = (
         db.scalar(
             select(func.coalesce(func.max(AudioSpeakerProfile.ordinal), 0)).where(

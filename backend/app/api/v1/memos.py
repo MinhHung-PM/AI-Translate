@@ -125,6 +125,8 @@ def generate_memo(meeting_id: uuid.UUID, auth: GenerateAuth, db: DB) -> Job:
     require_edit_meeting(access, meeting, auth.user)
     if not db.scalar(select(func.count()).select_from(TranscriptEntry).where(TranscriptEntry.meeting_id == meeting.id)):
         raise Conflict("Import a transcript before generating a memo")
+    # Serialize concurrent requests (double click): the second one sees "already being generated".
+    db.execute(select(Meeting.id).where(Meeting.id == meeting.id).with_for_update())
     memo = db.scalar(select(Memo).where(Memo.meeting_id == meeting.id))
     if memo is not None and memo.status == MemoStatus.approved:
         raise Conflict("The memo is approved; reopen it before regenerating")

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
@@ -34,7 +34,13 @@ def enforce_retention(db: Session) -> dict[str, int]:
         cutoff = now - timedelta(days=project.retention_days)
         meetings = db.scalars(
             select(Meeting).where(
-                Meeting.project_id == project.id, Meeting.scheduled_at < cutoff, Meeting.content_purged_at.is_(None)
+                Meeting.project_id == project.id,
+                Meeting.scheduled_at < cutoff,
+                # Content re-imported / captured after an earlier purge is purged again.
+                or_(
+                    Meeting.content_purged_at.is_(None),
+                    exists().where(TranscriptEntry.meeting_id == Meeting.id),
+                ),
             )
         )
         for meeting in meetings:

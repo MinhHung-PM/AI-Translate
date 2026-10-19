@@ -17,7 +17,7 @@ from app.integrations.models import CanonicalEvent
 from app.integrations.normalization.event_deduplicator import dedup_key
 from app.models import Meeting, TranscriptEntry
 from app.models.enums import MeetingStatus
-from app.services.transcripts.importer import next_sequence
+from app.services.transcripts.importer import lock_meeting_transcript, next_sequence
 from app.services.transcripts.normalize import clean_text, detect_language
 
 
@@ -29,6 +29,7 @@ def ingest_event(db: Session, meeting: Meeting, event: CanonicalEvent) -> tuple[
     text = clean_text(event.original_text)[: get_settings().max_entry_chars]
     if not text:
         return None, False
+    lock_meeting_transcript(db, meeting.id)  # also makes the dedup check below race-free
     key = dedup_key(event)
     if key:
         existing = db.scalar(

@@ -95,6 +95,15 @@ def fail(db: Session, job: Job, code: str, message: str) -> None:
     job.error_code = code[:64]
     job.error_message = message[:500]
     job.finished_at = utcnow()
+    if job.kind == JobKind.generate_memo and job.meeting_id is not None:
+        # Otherwise the memo would stay "generating" and could never be regenerated or edited.
+        from app.models import Memo
+        from app.models.enums import MemoStatus
+
+        memo = db.scalar(select(Memo).where(Memo.meeting_id == job.meeting_id))
+        if memo is not None and memo.status == MemoStatus.generating:
+            memo.status = MemoStatus.failed
+            memo.generation_error = message[:500]
 
 
 def requeue_stale(db: Session, stale_after: timedelta = timedelta(minutes=10)) -> int:

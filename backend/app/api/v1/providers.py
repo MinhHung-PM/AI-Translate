@@ -122,7 +122,20 @@ def remove_key(config_id: uuid.UUID, auth: Auth, db: DB) -> ProviderConfigOut:
 @router.delete("/configs/{config_id}", status_code=204)
 def delete_config(config_id: uuid.UUID, auth: Auth, db: DB) -> None:
     config = _own_config(db, auth, config_id)
+    was_default = config.is_default
     db.delete(config)  # cascades to session secrets
+    if was_default:
+        # Keep a default when other (translation-capable) configurations remain.
+        db.flush()
+        for other in db.scalars(
+            select(AIProviderConfiguration)
+            .where(AIProviderConfiguration.user_id == auth.user.id)
+            .order_by(AIProviderConfiguration.created_at)
+        ):
+            info = get_catalog().get(other.provider)
+            if info is not None and not svc.is_speech_only(info):
+                other.is_default = True
+                break
     record_audit(
         db,
         actor_id=auth.user.id,

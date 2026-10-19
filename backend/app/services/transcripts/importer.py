@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -81,9 +81,17 @@ def clear_transcript(db: Session, meeting: Meeting) -> None:
     if memo is not None:
         if memo.status == MemoStatus.approved:
             raise Conflict("The memo is approved; reopen it before replacing the transcript")
+        if memo.status == MemoStatus.generating:
+            raise Conflict("The memo is being generated; wait until it finishes before replacing the transcript")
         db.delete(memo)
     db.execute(delete(TranscriptEntry).where(TranscriptEntry.meeting_id == meeting.id))
     db.flush()
+
+
+def lock_meeting_transcript(db: Session, meeting_id: object) -> None:
+    """Serialize writers of one meeting's transcript (live capture, platform fetch jobs, imports)
+    until the transaction ends: sequence numbers are MAX+1 and must not collide."""
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"transcript:{meeting_id}"})
 
 
 def next_sequence(db: Session, meeting: Meeting) -> int:
@@ -100,6 +108,7 @@ def store_transcript(
     replace: bool,
     source_language: Language | None,
 ) -> TranscriptImport:
+    lock_meeting_transcript(db, meeting.id)
     existing = db.scalar(
         select(func.count()).select_from(TranscriptEntry).where(TranscriptEntry.meeting_id == meeting.id)
     )

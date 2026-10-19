@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.ai.base import (
@@ -81,9 +82,18 @@ def _relevant_terms(glossary: Sequence[GlossaryEntry], texts: Sequence[str]) -> 
 def get_or_create_translation(db: Session, entry: TranscriptEntry, target: Language) -> Translation:
     tr = db.scalar(select(Translation).where(Translation.entry_id == entry.id, Translation.target_language == target))
     if tr is None:
-        tr = Translation(id=uuid.uuid4(), entry_id=entry.id, target_language=target, status=TranslationStatus.pending)
-        db.add(tr)
-        db.flush()
+        # A live capture and a "translate all" job may create the same row at once: let the
+        # database pick one instead of failing on the unique constraint.
+        db.execute(
+            pg_insert(Translation)
+            .values(id=uuid.uuid4(), entry_id=entry.id, target_language=target, status=TranslationStatus.pending)
+            .on_conflict_do_nothing(constraint="uq_translation_entry_lang")
+        )
+        tr = db.scalars(
+            select(Translation)
+            .where(Translation.entry_id == entry.id, Translation.target_language == target)
+            .execution_options(populate_existing=True)
+        ).one()
     return tr
 
 
@@ -188,6 +198,11 @@ def translate_entries(
             )
             for out in result.segments:
                 tr = tr_by_ref[out.ref]
+                # The AI call takes seconds: the user may have corrected this translation, or edited
+                # the original text (which resets it to pending), meanwhile. Never overwrite either.
+                db.refresh(tr, with_for_update=True)
+                if tr.is_user_edited or tr.status != TranslationStatus.processing:
+                    continue
                 tr.text = out.text
                 tr.ambiguity_note = out.ambiguity_note
                 tr.status = TranslationStatus.done
