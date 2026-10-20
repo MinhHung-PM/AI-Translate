@@ -12,7 +12,7 @@ import type { UsageSummary } from "@/lib/types";
 function Bar({ value, max }: { value: number; max: number }) {
   const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
   return (
-    <div className="h-1.5 w-full rounded bg-gray-100">
+    <div className="h-1.5 w-full rounded-full bg-surface-2">
       <div className="h-full rounded bg-brand-500" style={{ width: `${pct}%` }} />
     </div>
   );
@@ -125,7 +125,7 @@ export default function UsagePage() {
                     {data.by_meeting.map((r) => (
                       <tr key={r.meeting_id}>
                         <td>
-                          <Link href={`/meetings/${r.meeting_id}`} className="text-brand-700 hover:underline">
+                          <Link href={`/meetings/${r.meeting_id}`} className="text-info hover:underline">
                             {r.meeting_title}
                           </Link>
                         </td>

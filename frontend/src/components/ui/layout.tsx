@@ -5,30 +5,24 @@ export function Card({ title, actions, children, className, bodyClassName }: { t
   return (
     <section className={cn("panel overflow-hidden", className)}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 border-b-2 border-ink bg-brand-50 px-4 py-2.5">
-          {title && (
-            <h2 className="flex items-center gap-2 text-sm font-extrabold tracking-tight text-ink">
-              <span aria-hidden className="inline-block size-2.5 rotate-45 rounded-[2px] bg-brand-500 ring-2 ring-ink" />
-              {title}
-            </h2>
-          )}
+        <header className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-1">
+          {title && <h2 className="text-[15px] font-semibold text-ink">{title}</h2>}
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className={cn("p-4", bodyClassName)}>{children}</div>
+      <div className={cn("p-5", (title || actions) && "pt-3", bodyClassName)}>{children}</div>
     </section>
   );
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
+/** Page title: mono eyebrow + Unbounded display heading. */
+export function PageHeader({ title, eyebrow, subtitle, actions }: { title: ReactNode; eyebrow?: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="relative inline-block text-2xl font-black tracking-tight text-ink">
-          <span aria-hidden className="speed-lines absolute -inset-x-2 bottom-0.5 h-3 -skew-x-12 rounded-sm" />
-          <span className="relative">{title}</span>
-        </h1>
-        {subtitle && <div className="mt-0.5 text-sm text-muted">{subtitle}</div>}
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+      <div className="flex min-w-60 flex-1 flex-col gap-1">
+        {eyebrow && <span className="eyebrow text-muted">{eyebrow}</span>}
+        <h1 className="font-display text-[clamp(20px,2.4vw,26px)] leading-tight font-semibold text-ink">{title}</h1>
+        {subtitle && <div className="text-sm text-muted">{subtitle}</div>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -38,26 +32,30 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
 export function Table({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className={cn("overflow-x-auto", className)}>
-      <table className="w-full border-collapse text-sm [&_td]:border-b [&_td]:border-line [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_th]:border-b-2 [&_th]:border-ink [&_th]:bg-scroll [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:text-muted">
+      <table className="w-full border-collapse text-sm [&_td]:border-b [&_td]:border-line [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_th]:border-b [&_th]:border-line [&_th]:bg-surface-2 [&_th]:px-4 [&_th]:py-2.5 [&_th]:text-left [&_th]:font-mono [&_th]:text-[10.5px] [&_th]:font-medium [&_th]:tracking-wider [&_th]:text-muted [&_th]:uppercase [&_tr:last-child_td]:border-b-0">
         {children}
       </table>
     </div>
   );
 }
 
-export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "danger" | "warning" }) {
+const statTones = { muted: "text-muted", warning: "text-warning", danger: "text-danger", info: "text-info" } as const;
+
+/** Metric tile: mono label tinted by meaning, big Unbounded number. */
+export function Stat({ label, value, hint, tone = "muted" }: { label: string; value: ReactNode; hint?: ReactNode; tone?: keyof typeof statTones }) {
   return (
-    <div className="panel px-4 py-3 transition-transform hover:-translate-y-0.5">
-      <p className="text-xs font-semibold text-muted">{label}</p>
-      <p className={cn("mt-1 text-2xl font-black tabular-nums text-ink", tone === "danger" && "text-red-700", tone === "warning" && "text-amber-700")}>{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
+    <div className="flex h-full flex-col gap-1.5 rounded-[14px] border border-line bg-surface p-4">
+      <p className={cn("eyebrow", statTones[tone])}>{label}</p>
+      <p className="font-display text-[28px] leading-none font-semibold text-ink tabular-nums">{value}</p>
+      {hint && <p className="text-xs text-muted">{hint}</p>}
     </div>
   );
 }
 
-export function Tabs<T extends string>({ value, onChange, items }: { value: T; onChange: (v: T) => void; items: { value: T; label: ReactNode }[] }) {
+/** Segmented pill tabs (selected = inverted ink). */
+export function Tabs<T extends string>({ value, onChange, items, className, size = "md" }: { value: T; onChange: (v: T) => void; items: { value: T; label: ReactNode }[]; className?: string; size?: "sm" | "md" }) {
   return (
-    <div role="tablist" className="mb-4 inline-flex flex-wrap gap-1.5 rounded-full border-2 border-ink bg-white p-1 shadow-[var(--shadow-panel-sm)]">
+    <div role="tablist" className={cn("inline-flex flex-wrap rounded-full border border-line p-0.5", size === "sm" ? "text-xs" : "text-[13px]", className)}>
       {items.map((item) => (
         <button
           key={item.value}
@@ -66,13 +64,36 @@ export function Tabs<T extends string>({ value, onChange, items }: { value: T; o
           aria-selected={item.value === value}
           onClick={() => onChange(item.value)}
           className={cn(
-            "rounded-full px-4 py-1.5 text-sm font-bold transition-colors",
-            item.value === value ? "bg-brand-500 text-white" : "text-muted hover:bg-brand-50 hover:text-ink",
+            "rounded-full whitespace-nowrap transition-colors",
+            size === "sm" ? "px-3 py-1" : "px-3.5 py-1.5",
+            item.value === value ? "bg-ink text-bg" : "text-muted hover:text-ink",
           )}
         >
           {item.label}
         </button>
       ))}
     </div>
+  );
+}
+
+/** Toggle chip used for filters and radio-like option groups. */
+export function Chip({ on, onClick, children, tone, role, className, disabled, ...rest }: { on: boolean; onClick: () => void; children: ReactNode; tone?: "warning" | "danger"; role?: "radio" | "switch"; className?: string; disabled?: boolean; "data-testid"?: string }) {
+  return (
+    <button
+      type="button"
+      role={role}
+      aria-checked={role ? on : undefined}
+      aria-pressed={role ? undefined : on}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "rounded-full border px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        on ? "border-ink bg-ink text-bg" : cn("border-line-strong bg-transparent hover:bg-surface-2", tone === "warning" ? "text-warning" : tone === "danger" ? "text-danger" : "text-ink"),
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+    </button>
   );
 }

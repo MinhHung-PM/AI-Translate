@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Alert, Button, Card, EmptyState, Input, Pagination, ProgressBar, Select, Spinner } from "@/components/ui";
+import { Alert, Button, Card, Chip, EmptyState, FilterPill, Input, Pagination, Select, Spinner, pillControl } from "@/components/ui";
 import { MeetingSourceSelector } from "@/components/integrations/MeetingSourceSelector";
 import { ImportPanel } from "@/components/meeting/import-panel";
 import { MeetingHeader } from "@/components/meeting/meeting-header";
@@ -29,6 +29,7 @@ export default function TranscriptWorkspacePage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [speaker, setSpeaker] = useState("");
   const lang = (target || meeting?.target_language || "vi") as Language;
   const canView = meeting?.permissions.view_transcript ?? false;
   const editable = meeting?.permissions.edit ?? false;
@@ -81,6 +82,19 @@ export default function TranscriptWorkspacePage() {
   if (meetingError) return <Alert tone="danger">{errorMessage(meetingError)}</Alert>;
   if (!meeting) return <Spinner label={t.common.loading} />;
   const hasTranscript = meeting.entry_count > 0;
+  const progressDone = job ? job.progress_done : (stats.data?.done ?? 0);
+  const progressTotal = job ? Math.max(job.progress_total, 1) : (stats.data?.total ?? 0);
+  const pct = progressTotal ? Math.round((progressDone / progressTotal) * 100) : 0;
+
+  const items = entries.data?.items ?? [];
+  const speakers = [...new Set(items.map((e) => e.speaker_label).filter((x): x is string => !!x))].slice(0, 6);
+  const shown = speaker ? items.filter((e) => e.speaker_label === speaker) : items;
+  const statusChips: { value: TranslationStatus | ""; label: string; tone?: "danger" }[] = [
+    { value: "", label: t.common.all },
+    { value: "pending", label: `${t.translationStatus.pending}${stats.data ? ` · ${stats.data.pending}` : ""}` },
+    { value: "done", label: t.translationStatus.done },
+    { value: "failed", label: `${t.translationStatus.failed}${stats.data ? ` · ${stats.data.failed}` : ""}`, tone: "danger" },
+  ];
 
   return (
     <>
@@ -89,7 +103,7 @@ export default function TranscriptWorkspacePage() {
       {!canView && <Alert tone="info">{t.memo.restricted}</Alert>}
 
       {canView && (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {(editable || meeting.platform !== "manual_import") && (
             <Card title={t.source.title}>
               <MeetingSourceSelector meetingId={id} editable={editable} platform={meeting.platform} onImported={refreshAll} />
@@ -100,101 +114,112 @@ export default function TranscriptWorkspacePage() {
               <ImportPanel meetingId={id} hasTranscript={hasTranscript} onImported={refreshAll} />
             </Card>
           )}
-          {!hasTranscript && !editable && <EmptyState title={t.workspace.noTranscript} />}
+          {!hasTranscript && !editable && <EmptyState fred="thinking" title={t.workspace.noTranscript} />}
 
           {hasTranscript && (
             <>
-              <div className="flex flex-wrap items-end gap-2 rounded-lg border border-line bg-white p-3">
-                <label className="text-xs text-muted">
-                  {t.workspace.targetLanguage}
-                  <Select value={lang} onChange={(e) => setTarget(e.target.value as Language)} className="mt-1 w-36">
-                    <option value="vi">{t.languages.vi}</option>
-                    <option value="ja">{t.languages.ja}</option>
-                    <option value="en">{t.languages.en}</option>
-                  </Select>
-                </label>
-                {editable && (
-                  <>
-                    <Button variant="primary" onClick={() => void startTranslation({})} disabled={!!jobId} data-testid="translate-all">
-                      {t.workspace.translateAll}
-                    </Button>
-                    <Button onClick={() => void startTranslation({ entry_ids: [...selected] })} disabled={!!jobId || selected.size === 0}>
-                      {t.workspace.translateSelected} ({selected.size})
-                    </Button>
-                    <Button onClick={() => void startTranslation({ only_failed: true })} disabled={!!jobId || !stats.data?.failed}>
-                      {t.workspace.retryFailed}
-                    </Button>
-                    <Button variant="ghost" onClick={() => void startTranslation({ force: true })} disabled={!!jobId}>
-                      {t.workspace.retranslateAll}
-                    </Button>
-                  </>
-                )}
-                <div className="ml-auto flex flex-wrap items-end gap-2">
-                  {editable && (
-                    <Button onClick={() => setShowImport((v) => !v)}>{t.workspace.import}</Button>
-                  )}
-                  <Select aria-label={t.workspace.exportRecord} value="" onChange={(e) => e.target.value && void downloadFile(`/meetings/${id}/export`, { format: e.target.value }).catch((err) => setActionError(errorMessage(err)))} className="w-40">
-                    <option value="">{t.workspace.exportRecord}</option>
-                    <option value="md">Markdown</option>
-                    <option value="csv">CSV</option>
-                    <option value="json">JSON</option>
-                  </Select>
-                  {editable && (
-                    <Button variant="primary" onClick={() => void generateMemo()} data-testid="generate-memo">
-                      {t.workspace.generateMemo}
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {stats.data && (
-                <div className="grid gap-2 rounded-lg border border-line bg-white p-3 md:grid-cols-[1fr_auto]">
-                  <ProgressBar value={job ? job.progress_done : stats.data.done} max={job ? Math.max(job.progress_total, 1) : stats.data.total} label={t.workspace.progress} />
-                  <p className="text-xs text-muted" data-testid="translation-stats">
-                    {t.translationStatus.done}: {stats.data.done} · {t.translationStatus.failed}: {stats.data.failed} · {t.translationStatus.pending}: {stats.data.pending}
-                    {jobId && ` · ${t.workspace.jobRunning}`}
-                  </p>
-                </div>
-              )}
-              {actionError && <Alert tone="danger">{actionError}</Alert>}
-              <Alert tone="info">{t.workspace.aiNotice}</Alert>
-
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Input
                   type="search"
-                  placeholder={`${t.common.search}…`}
+                  placeholder={`${t.workspace.searchPlaceholder}`}
                   value={q}
                   onChange={(e) => {
                     setQ(e.target.value);
                     setPage(1);
                   }}
-                  className="max-w-sm"
+                  className="h-9 max-w-sm min-w-48 flex-1 bg-surface"
                   aria-label={t.common.search}
                 />
-                <Select
-                  aria-label={t.history.columns.status}
-                  value={status}
-                  onChange={(e) => {
-                    setStatus(e.target.value as TranslationStatus | "");
-                    setPage(1);
-                  }}
-                  className="w-44"
-                >
-                  <option value="">{t.common.all}</option>
-                  {(["pending", "done", "failed"] as const).map((s) => (
-                    <option key={s} value={s}>
-                      {t.translationStatus[s]}
-                    </option>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t.history.columns.status}>
+                  {statusChips.map((c) => (
+                    <Chip
+                      key={c.value || "all"}
+                      on={status === c.value}
+                      tone={c.tone}
+                      onClick={() => {
+                        setStatus(c.value);
+                        setPage(1);
+                      }}
+                    >
+                      {c.label}
+                    </Chip>
                   ))}
-                </Select>
+                </div>
+                {speakers.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label={t.workspace.speaker}>
+                    {speakers.map((sp) => (
+                      <Chip key={sp} on={speaker === sp} onClick={() => setSpeaker(speaker === sp ? "" : sp)}>
+                        {sp}
+                      </Chip>
+                    ))}
+                  </div>
+                )}
+                <FilterPill label={t.workspace.targetLanguage} className="ml-auto">
+                  <Select value={lang} onChange={(e) => setTarget(e.target.value as Language)} className={pillControl} aria-label={t.workspace.targetLanguage}>
+                    <option value="vi">{t.languages.vi}</option>
+                    <option value="ja">{t.languages.ja}</option>
+                    <option value="en">{t.languages.en}</option>
+                  </Select>
+                </FilterPill>
               </div>
 
+              <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-line bg-surface px-3.5 py-2.5">
+                <span className="text-[13px] whitespace-nowrap" data-testid="translation-stats">
+                  {t.translationStatus.done}: <b>{job ? job.progress_done : (stats.data?.done ?? 0)}</b>/{job ? job.progress_total : (stats.data?.total ?? 0)}
+                  {jobId && <span className="text-info"> · {t.workspace.jobRunning}</span>}
+                </span>
+                <div className="h-1.5 min-w-28 flex-1 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label={t.workspace.progress} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                  <div className="h-full bg-success transition-all" style={{ width: `${pct}%` }} />
+                </div>
+                {editable && (
+                  <>
+                    <Button variant="primary" size="sm" onClick={() => void startTranslation({})} disabled={!!jobId} data-testid="translate-all">
+                      {jobId ? t.workspace.jobRunning : t.workspace.translateAll}
+                    </Button>
+                    <Button size="sm" onClick={() => void startTranslation({ entry_ids: [...selected] })} disabled={!!jobId || selected.size === 0}>
+                      {t.workspace.translateSelected} ({selected.size})
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => void startTranslation({ only_failed: true })} disabled={!!jobId || !stats.data?.failed}>
+                      {t.workspace.retryFailed} ({stats.data?.failed ?? 0})
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => void startTranslation({ force: true })} disabled={!!jobId}>
+                      {t.workspace.retranslateAll}
+                    </Button>
+                    <Button size="sm" onClick={() => setShowImport((v) => !v)}>
+                      {t.workspace.import}
+                    </Button>
+                  </>
+                )}
+                <select
+                  aria-label={t.workspace.exportRecord}
+                  value=""
+                  onChange={(e) => e.target.value && void downloadFile(`/meetings/${id}/export`, { format: e.target.value }).catch((err) => setActionError(errorMessage(err)))}
+                  className="h-8 rounded-full border border-line-strong bg-transparent px-3 text-[13px]"
+                >
+                  <option value="">{t.workspace.exportRecord}</option>
+                  <option value="md">Markdown</option>
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON</option>
+                </select>
+                {editable && (
+                  <Button variant="inverse" size="sm" onClick={() => void generateMemo()} data-testid="generate-memo">
+                    {t.workspace.generateMemo}
+                  </Button>
+                )}
+              </div>
+              {actionError && (
+                <Alert tone="danger" fred="sad">
+                  {actionError}
+                </Alert>
+              )}
+              <p className="text-xs text-muted">{t.workspace.aiNotice}</p>
+
               {entries.error && <Alert tone="danger">{errorMessage(entries.error)}</Alert>}
-              {entries.data && entries.data.items.length === 0 && <EmptyState title={t.workspace.noResults} />}
-              {entries.data && entries.data.items.length > 0 && (
+              {entries.data && shown.length === 0 && <EmptyState fred="thinking" title={t.workspace.noResults} hint={t.workspace.noResultsHint} />}
+              {entries.data && shown.length > 0 && (
                 <>
                   <TranscriptTable
-                    entries={entries.data.items}
+                    entries={shown}
                     target={lang}
                     editable={editable}
                     selected={editable ? selected : undefined}
@@ -209,6 +234,8 @@ export default function TranscriptWorkspacePage() {
                             })
                         : undefined
                     }
+                    onToggleAll={editable ? (on) => setSelected(on ? new Set(shown.map((e) => e.id)) : new Set()) : undefined}
+                    onRetranslate={editable && !jobId ? (eid) => void startTranslation({ entry_ids: [eid], force: true }) : undefined}
                     onChanged={() => {
                       void entries.reload();
                       void stats.reload();

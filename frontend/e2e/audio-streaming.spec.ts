@@ -143,6 +143,7 @@ test("Streaming captions: interim words appear while speaking, final sentence is
   await tid(page, "unlock-mics").click();
   await tid(page, "mic-list").getByRole("checkbox").first().check();
   await tid(page, "audio-consent").check();
+  await tid(page, "advanced-toggle").click();
   await expect(tid(page, "audio-streaming")).toBeChecked();
   await tid(page, "caption-latency").getByRole("radio", { name: "Phụ đề cân bằng" }).click();
   // Captions default to automatic language detection; the language list appears only when asked for.
@@ -256,6 +257,7 @@ test("Live interpretation: translated words stream in with the original, sentenc
   await tid(page, "unlock-mics").click();
   await tid(page, "mic-list").getByRole("checkbox").first().check();
   await tid(page, "audio-consent").check();
+  await tid(page, "advanced-toggle").click();
   // Live interpretation is the default streaming mode.
   await expect(tid(page, "caption-latency").getByRole("radio", { name: /Phiên dịch trực tiếp/ })).toHaveAttribute("aria-checked", "true");
   await expect(tid(page, "play-voice")).not.toBeChecked();
@@ -371,6 +373,7 @@ test("Soniox: live words + translation over the WebSocket, sentence stored with 
   await tid(page, "unlock-mics").click();
   await tid(page, "mic-list").getByRole("checkbox").first().check();
   await tid(page, "audio-consent").check();
+  await tid(page, "advanced-toggle").click();
   await tid(page, "stt-provider").getByRole("radio", { name: /Soniox/ }).click();
   await expect(tid(page, "caption-latency").getByRole("radio", { name: /Phiên dịch trực tiếp/ })).toHaveAttribute("aria-checked", "true");
   // Soniox honours language hints, so the language choice stays available in interpret mode.

@@ -53,7 +53,7 @@ export function ImportPanel({ meetingId, hasTranscript, onImported }: { meetingI
               ref={fileRef}
               type="file"
               accept=".txt,.srt,.vtt,.json,text/plain,text/vtt,application/json"
-              className="text-sm file:mr-3 file:rounded file:border file:border-line file:bg-white file:px-2 file:py-1 file:text-sm"
+              className="text-sm file:mr-3 file:rounded-full file:border file:border-line-strong file:bg-transparent file:px-3 file:py-1 file:text-sm file:text-ink"
               data-testid="transcript-file"
             />
           )}

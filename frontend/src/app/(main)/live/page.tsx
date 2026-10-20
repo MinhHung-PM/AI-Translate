@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Alert, Button, Card, EmptyState, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
+import { Alert, Button, Card, EmptyState, Field, Fred, Input, PageHeader, Select, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
@@ -59,66 +59,73 @@ export default function LiveTranslatePage() {
 
   return (
     <>
-      <PageHeader title={t.liveTranslate.title} subtitle={t.liveTranslate.subtitle} />
+      <PageHeader eyebrow={t.liveTranslate.eyebrow} title={t.liveTranslate.title} subtitle={t.liveTranslate.subtitle} />
       {contributable.length === 0 ? (
-        <EmptyState title={t.meetingForm.noProjects} />
+        <EmptyState fred="pointing" title={t.meetingForm.noProjects} />
       ) : (
-        <Card title={t.liveTranslate.quickStart} className="mb-4">
-          <div className="grid gap-3 md:grid-cols-4" data-testid="live-quick-start">
-            <Field label={t.meetingForm.project}>
-              {(id) => (
-                <Select id={id} value={project?.id ?? ""} onChange={(e) => setProjectId(e.target.value)} data-testid="live-project">
-                  {contributable.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.code} — {p.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-            <Field label={t.liveTranslate.titleLabel}>
-              {(id) => <Input id={id} value={title} maxLength={300} placeholder={t.liveTranslate.titlePlaceholder} onChange={(e) => setTitle(e.target.value)} />}
-            </Field>
-            <Field label={t.liveTranslate.spoken}>
-              {(id) => (
-                <Select id={id} value={src} onChange={(e) => setSource(e.target.value as Language)}>
-                  {LANGS.map((l) => (
-                    <option key={l} value={l}>
-                      {t.languages[l]}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-            <Field label={t.liveTranslate.translateTo}>
-              {(id) => (
-                <Select id={id} value={tgt} onChange={(e) => setTarget(e.target.value as Language)}>
-                  {LANGS.map((l) => (
-                    <option key={l} value={l}>
-                      {t.languages[l]}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
+        <section className="mb-5 grid items-center gap-6 rounded-[22px] border border-line bg-surface p-[clamp(18px,3vw,32px)] lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="flex flex-col gap-4">
+            <span className="eyebrow text-[11px] tracking-[.08em] text-accent-text">{t.liveTranslate.quickStart}</span>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" data-testid="live-quick-start">
+              <Field label={t.meetingForm.project}>
+                {(id) => (
+                  <Select id={id} value={project?.id ?? ""} onChange={(e) => setProjectId(e.target.value)} data-testid="live-project">
+                    {contributable.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.code} — {p.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label={t.liveTranslate.titleLabel}>
+                {(id) => <Input id={id} value={title} maxLength={300} placeholder={t.liveTranslate.titlePlaceholder} onChange={(e) => setTitle(e.target.value)} />}
+              </Field>
+              <Field label={t.liveTranslate.spoken}>
+                {(id) => (
+                  <Select id={id} value={src} onChange={(e) => setSource(e.target.value as Language)}>
+                    {LANGS.map((l) => (
+                      <option key={l} value={l}>
+                        {t.languages[l]}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label={t.liveTranslate.translateTo}>
+                {(id) => (
+                  <Select id={id} value={tgt} onChange={(e) => setTarget(e.target.value as Language)}>
+                    {LANGS.map((l) => (
+                      <option key={l} value={l}>
+                        {t.languages[l]}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+            {error && <Alert tone="danger" fred="sad">{error}</Alert>}
+            <div className="flex flex-wrap items-center gap-3.5">
+              <Button variant="primary" size="lg" onClick={() => void startNow()} loading={busy} data-testid="live-start-now">
+                <span className="size-[9px] rounded-full bg-[#d93a2b]" aria-hidden />
+                {t.liveTranslate.startNow}
+              </Button>
+              <p className="max-w-xl text-xs leading-normal text-muted">{t.liveTranslate.howItWorks}</p>
+            </div>
           </div>
-          <p className="mt-3 text-xs text-muted">{t.liveTranslate.howItWorks}</p>
-          {error && <Alert tone="danger" className="mt-3">{error}</Alert>}
-          <Button variant="primary" className="mt-3" onClick={() => void startNow()} loading={busy} data-testid="live-start-now">
-            {t.liveTranslate.startNow}
-          </Button>
-        </Card>
+          <Fred pose="pointing" className="mx-auto hidden w-full max-w-[260px] lg:block" priority />
+        </section>
       )}
 
       {recent && recent.items.length > 0 && (
         <Card title={t.liveTranslate.existing}>
-          <ul className="divide-y divide-line text-sm">
+          <ul className="flex flex-col">
             {recent.items.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-3 py-2">
-                <span className="truncate">
+              <li key={m.id} className="flex items-center justify-between gap-3 border-t border-line py-2.5 text-sm first:border-t-0">
+                <span className="min-w-0 truncate">
                   {m.title} <span className="text-xs text-muted">· {formatDateTime(m.scheduled_at, m.timezone)}</span>
                 </span>
-                <Link href={`/meetings/${m.id}/live`} className="text-sm whitespace-nowrap text-brand-700 underline">
+                <Link href={`/meetings/${m.id}/live`} className="text-[13px] whitespace-nowrap text-info">
                   {t.liveTranslate.openLive}
                 </Link>
               </li>

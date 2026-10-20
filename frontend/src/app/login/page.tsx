@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Shuriken, Alert, Button, Card, Field, Select } from "@/components/ui";
+import { Alert, Button, Card, Field, Fred, Select } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { errorMessage } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -61,10 +61,10 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="mb-5 flex items-center gap-3">
-          <Shuriken className="size-14 text-brand-500" spin />
+          <Fred pose="wave" className="h-24 w-auto" priority />
           <div>
-            <h1 className="text-2xl leading-tight font-black tracking-tight text-ink">{t.app.name}</h1>
-            <p className="text-sm font-semibold text-muted">{t.login.subtitle}</p>
+            <h1 className="font-display text-2xl leading-tight font-semibold text-ink">{t.app.short}</h1>
+            <p className="text-sm text-muted">{t.login.subtitle}</p>
           </div>
         </div>
         <Card title={t.login.title}>
@@ -95,7 +95,7 @@ export default function LoginPage() {
             </form>
           )}
           {mode === "oidc" && (
-            <a href="/api/v1/auth/oidc/login" className="inline-flex h-9 w-full items-center justify-center rounded-md bg-brand-600 text-sm font-medium text-white hover:bg-brand-700">
+            <a href="/api/v1/auth/oidc/login" className="inline-flex h-10 w-full items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-ink hover:brightness-105">
               {t.login.sso}
             </a>
           )}

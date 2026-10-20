@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Alert, Badge, Card, EmptyState, Input, PageHeader, Pagination, Select, Spinner, Table } from "@/components/ui";
+import { Alert, Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Spinner, Table } from "@/components/ui";
 import { MeetingStatusBadge, MemoStatusBadge } from "@/components/shared/status";
 import { ProjectFilter } from "@/components/shared/project-select";
 import { errorMessage, formatDateTime } from "@/lib/format";
@@ -17,7 +18,14 @@ export default function HistoryPage() {
   const [projectId, setProjectId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [memoStatus, setMemoStatus] = useState<MemoStatus | "">("");
+  // "Biên bản" in the sidebar opens this list filtered by ?memo=<status>.
+  const memoParam = (useSearchParams().get("memo") ?? "") as MemoStatus | "";
+  const [memoStatus, setMemoStatus] = useState<MemoStatus | "">(memoParam);
+  const [seenParam, setSeenParam] = useState(memoParam);
+  if (memoParam !== seenParam) {
+    setSeenParam(memoParam);
+    setMemoStatus(memoParam);
+  }
   const [platform, setPlatform] = useState<MeetingPlatform | "">("");
   const [page, setPage] = useState(1);
   const { data, error, loading } = useApi<Page<Meeting>>("/meetings", {
@@ -37,7 +45,15 @@ export default function HistoryPage() {
 
   return (
     <>
-      <PageHeader title={t.history.title} />
+      <PageHeader
+        eyebrow={memoStatus ? `${t.nav.memos} · ${t.memoStatus[memoStatus]}` : t.nav.meetings}
+        title={t.history.title}
+        actions={
+          <Link href="/meetings/new">
+            <Button variant="primary">{t.nav.newMeeting}</Button>
+          </Link>
+        }
+      />
       <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-6">
         <Input type="search" placeholder={t.history.searchPlaceholder} value={q} onChange={(e) => reset(setQ)(e.target.value)} className="col-span-2" aria-label={t.common.search} />
         <ProjectFilter value={projectId} onChange={reset(setProjectId)} />
@@ -68,7 +84,7 @@ export default function HistoryPage() {
         <Card bodyClassName="p-0">
           {data.items.length === 0 ? (
             <div className="p-4">
-              <EmptyState title={t.history.empty} />
+              <EmptyState fred="pointing" title={t.history.empty} />
             </div>
           ) : (
             <Table>
@@ -88,7 +104,7 @@ export default function HistoryPage() {
                 {data.items.map((m) => (
                   <tr key={m.id}>
                     <td>
-                      <Link href={`/meetings/${m.id}`} className="font-medium text-brand-700 hover:underline">
+                      <Link href={`/meetings/${m.id}`} className="font-medium text-info hover:underline">
                         {m.title}
                       </Link>
                     </td>
@@ -106,11 +122,11 @@ export default function HistoryPage() {
                     <td className="text-right tabular-nums">{m.entry_count}</td>
                     <td className="whitespace-nowrap text-xs">
                       {m.permissions.view_transcript && (
-                        <Link href={`/meetings/${m.id}`} className="mr-2 text-brand-700 hover:underline">
+                        <Link href={`/meetings/${m.id}`} className="mr-2 text-info hover:underline">
                           {t.workspace.tabs.transcript}
                         </Link>
                       )}
-                      <Link href={`/meetings/${m.id}/memo`} className="text-brand-700 hover:underline">
+                      <Link href={`/meetings/${m.id}/memo`} className="text-info hover:underline">
                         {t.workspace.tabs.memo}
                       </Link>
                     </td>

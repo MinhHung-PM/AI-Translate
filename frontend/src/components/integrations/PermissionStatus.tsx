@@ -45,7 +45,7 @@ export function PermissionStatus({ capabilities, compact }: { capabilities: Capa
             <Badge tone={CAP_TONE[c.status]}>{t.integrations.capStatus[c.status]}</Badge>
           </div>
           {!compact && <p className="text-xs text-muted">{c.message}</p>}
-          {!compact && c.remediation && c.status !== "available" && <p className="text-xs text-amber-800">→ {c.remediation}</p>}
+          {!compact && c.remediation && c.status !== "available" && <p className="text-xs text-warning">→ {c.remediation}</p>}
         </li>
       ))}
     </ul>

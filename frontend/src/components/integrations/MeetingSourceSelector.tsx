@@ -122,7 +122,7 @@ export function MeetingSourceSelector({
               )
             ) : null}
             {liveActive && (
-              <Link href={`/meetings/${meetingId}/live`} className="self-center text-xs text-brand-700 underline">
+              <Link href={`/meetings/${meetingId}/live`} className="self-center text-xs text-info underline">
                 {t.source.openLive}
               </Link>
             )}
@@ -220,7 +220,7 @@ export function MeetingSourceSelector({
                     <li key={m.provider_meeting_id}>
                       <button
                         type="button"
-                        className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left hover:bg-gray-50"
+                        className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left hover:bg-surface-2"
                         onClick={() => setReference(m.join_url ?? m.provider_meeting_id)}
                       >
                         <span className="truncate">{m.title}</span>

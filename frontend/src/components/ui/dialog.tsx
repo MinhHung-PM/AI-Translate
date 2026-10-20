@@ -17,18 +17,18 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
       ref={ref}
       onClose={onClose}
       aria-label={title}
-      className={`m-auto w-[95vw] ${wide ? "max-w-3xl" : "max-w-lg"} rounded-lg border border-line p-0 shadow-xl backdrop:bg-black/30`}
+      className={`m-auto w-[95vw] ${wide ? "max-w-3xl" : "max-w-lg"} rounded-[22px] border border-line bg-surface p-0 text-ink shadow-[var(--shadow)] backdrop:bg-[rgba(10,10,12,.7)] backdrop:backdrop-blur-sm`}
     >
       {open && (
         <div className="flex max-h-[85vh] flex-col">
-          <header className="flex items-center justify-between border-b border-line px-4 py-3">
-            <h2 className="text-sm font-semibold">{title}</h2>
-            <button type="button" onClick={onClose} className="rounded px-2 text-muted hover:bg-gray-100" aria-label={t.common.close}>
+          <header className="flex items-center justify-between px-5 pt-4 pb-2">
+            <h2 className="text-[15px] font-semibold">{title}</h2>
+            <button type="button" onClick={onClose} className="rounded-full px-2 text-lg text-muted hover:bg-surface-2" aria-label={t.common.close}>
               ×
             </button>
           </header>
-          <div className="overflow-y-auto px-4 py-3">{children}</div>
-          {footer && <footer className="flex justify-end gap-2 border-t border-line px-4 py-3">{footer}</footer>}
+          <div className="overflow-y-auto px-5 py-3">{children}</div>
+          {footer && <footer className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</footer>}
         </div>
       )}
     </dialog>

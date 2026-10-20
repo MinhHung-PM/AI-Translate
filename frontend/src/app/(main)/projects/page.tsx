@@ -76,7 +76,7 @@ export default function ProjectsPage() {
                   <tr key={p.id}>
                     <td className="font-mono text-xs">{p.code}</td>
                     <td>
-                      <Link href={`/projects/${p.id}`} className="font-medium text-brand-700 hover:underline">
+                      <Link href={`/projects/${p.id}`} className="font-medium text-info hover:underline">
                         {p.name}
                       </Link>
                     </td>

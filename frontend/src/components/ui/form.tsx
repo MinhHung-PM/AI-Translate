@@ -2,17 +2,17 @@ import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type Selec
 import { cn } from "./cn";
 
 const control =
-  "w-full rounded-lg border-2 border-ink/25 bg-white px-2.5 py-1.5 text-sm text-ink placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-100 disabled:bg-gray-50 disabled:text-muted";
+  "w-full rounded-[10px] border border-line-strong bg-bg px-3 py-2 text-sm text-ink placeholder:text-subtle focus:border-info focus:outline-none disabled:bg-surface-2 disabled:text-muted";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...props }, ref) {
-  return <input ref={ref} className={cn(control, "h-9", className)} {...props} />;
+  return <input ref={ref} className={cn(control, "h-10", className)} {...props} />;
 });
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea(
   { className, ...props },
   ref,
 ) {
-  return <textarea ref={ref} className={cn(control, "min-h-20", className)} {...props} />;
+  return <textarea ref={ref} className={cn(control, "min-h-20 leading-normal", className)} {...props} />;
 });
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(
@@ -20,7 +20,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
   ref,
 ) {
   return (
-    <select ref={ref} className={cn(control, "h-9 pr-8", className)} {...props}>
+    <select ref={ref} className={cn(control, "h-10 bg-surface pr-8", className)} {...props}>
       {children}
     </select>
   );
@@ -39,13 +39,13 @@ export function Field({ label, hint, error, children, className }: FieldProps) {
   const id = useId();
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <label htmlFor={id} className="text-xs font-bold text-ink">
+      <label htmlFor={id} className="text-xs text-muted">
         {label}
       </label>
       {children(id)}
       {hint && !error && <p className="text-xs text-muted">{hint}</p>}
       {error && (
-        <p className="text-xs text-red-600" role="alert">
+        <p className="text-xs text-danger" role="alert">
           {error}
         </p>
       )}
@@ -55,9 +55,21 @@ export function Field({ label, hint, error, children, className }: FieldProps) {
 
 export function Checkbox({ label, className, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: ReactNode }) {
   return (
-    <label className={cn("inline-flex items-center gap-2 text-sm", props.disabled && "text-muted", className)}>
-      <input type="checkbox" className="size-4 rounded border-line accent-brand-600" {...props} />
+    <label className={cn("inline-flex cursor-pointer items-center gap-2.5 text-sm", props.disabled && "cursor-not-allowed text-muted", className)}>
+      <input type="checkbox" className="size-4 shrink-0 accent-accent" {...props} />
       {label}
     </label>
   );
 }
+
+/** Compact labelled filter ("Dự án  Tất cả ▾"): wrap a Select/Input and pass it `pillControl`. */
+export function FilterPill({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+  return (
+    <label className={cn("flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-surface pl-3 text-[13px] focus-within:border-info", className)}>
+      <span className="whitespace-nowrap text-muted">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+export const pillControl = "h-8 w-auto min-w-0 border-0 bg-transparent py-0 pl-1 text-[13px] focus:border-0";

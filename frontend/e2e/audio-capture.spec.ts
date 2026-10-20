@@ -67,6 +67,8 @@ test("Capture microphone audio → recognised, speaker-labelled and translated l
   const firstMic = tid(page, "mic-list").getByRole("checkbox").first();
   await firstMic.check();
   await expect(tid(page, "picked-sources")).toContainText("MIC");
+  // Advanced options are collapsed by default (the defaults suit most meetings).
+  await tid(page, "advanced-toggle").click();
   // Automatic noise suppression is on by default ("Tiêu chuẩn"); the audio below reaches
   // recognition through the filter chain (high-pass → low-pass → adaptive noise gate).
   await expect(tid(page, "noise-level").getByRole("radio", { checked: true })).toContainText("Tiêu chuẩn");
@@ -88,10 +90,10 @@ test("Capture microphone audio → recognised, speaker-labelled and translated l
 
   await tid(page, "stop-audio").click();
   await expect(tid(page, "replay-status")).toHaveText("stopped", { timeout: 30_000 });
-  await expect(tid(page, "start-audio")).toBeVisible();
 
-  // After the live session: one click to the AI meeting memo.
+  // After the live session: an end card with one click to the AI meeting memo (or record more).
   await expect(tid(page, "live-finished")).toBeVisible();
+  await expect(tid(page, "live-resume")).toBeVisible();
   await tid(page, "live-generate-memo").click();
   await expect(page).toHaveURL(/\/memo$/);
   await expect(page.getByText("AI không thể tự phê duyệt")).toBeVisible({ timeout: 30_000 });

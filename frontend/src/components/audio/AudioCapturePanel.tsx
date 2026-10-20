@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Alert, Badge, Button, Card, Checkbox, Input } from "@/components/ui";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Alert, Badge, Button, Checkbox, Chip, Fred, FredSays, cn } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { RealtimeCaptionSource, type CaptionState, type RealtimeToken } from "@/lib/audio/realtime";
 import { SonioxCaptionSource } from "@/lib/audio/soniox";
@@ -68,13 +68,23 @@ export function AudioCapturePanel({
   defaultLanguages,
   onChanged,
   onInterim,
+  onRunningChange,
+  captions,
+  toolbar,
+  lineCount,
 }: {
   meetingId: string;
   session: LiveSession | null;
   defaultLanguages: Language[];
   onChanged: () => void;
-  /** When given, words being spoken are reported to the parent (shown in the caption feed) instead of here. */
+  /** Words being spoken, reported to the parent's caption feed. */
   onInterim?: (sourceId: string, label: string, text: string, translation?: string) => void;
+  /** Capture started / stopped in this browser (the page switches to its focus layout). */
+  onRunningChange?: (running: boolean) => void;
+  /** While capturing: the caption feed (fills the screen) and its display controls (status bar). */
+  captions?: ReactNode;
+  toolbar?: ReactNode;
+  lineCount?: number;
 }) {
   const [mics, setMics] = useState<MediaDeviceInfo[] | null>(null);
   const [picked, setPicked] = useState<PickedSource[]>([]);
@@ -105,8 +115,10 @@ export function AudioCapturePanel({
   const soniox = streamingWanted && sttProvider === "soniox";
   const voices = useRef(new Map<string, HTMLAudioElement>());
   const [gates, setGates] = useState<Record<string, boolean>>({});
-  const [interim, setInterim] = useState<Record<string, { text: string; translation?: string }>>({});
   const [conn, setConn] = useState<Record<string, CaptionState>>({});
+  const [advanced, setAdvanced] = useState(false);
+  const [startedAt, setStartedAt] = useState(0);
+  const [now, setNow] = useState(0);
 
   const captures = useRef(new Map<string, SourceCapture>());
   const queues = useRef(new Map<string, Utterance[]>());
@@ -143,6 +155,18 @@ export function AudioCapturePanel({
       for (const [id, d] of cleaners.current) g[id] = d.gateOpen();
       setGates(g);
     }, 250);
+    return () => clearInterval(timer);
+  }, [running]);
+
+  useEffect(() => {
+    onRunningChange?.(running);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
+
+  // Recording clock in the status bar.
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [running]);
 
@@ -328,7 +352,6 @@ export function AudioCapturePanel({
     let rt: RealtimeCaptionSource | SonioxCaptionSource | null = null;
     const handlers = {
       onInterim: (_itemId: string, text: string, translation?: string) => {
-        setInterim((prev) => ({ ...prev, [p.id]: { text, translation } }));
         onInterim?.(p.id, p.label, text, translation);
       },
       onFinal: (u: FinalUtterance) => postFinal(sid, p.id, u, rt?.model ?? ""),
@@ -413,6 +436,8 @@ export function AudioCapturePanel({
         if (streaming) await startStreaming(sessionId, p, stream, cap, t0, res.session.capture_config?.stt_provider ?? "openai");
       }
       if (unmounted.current) throw new Error("UNMOUNTED");
+      setStartedAt(Date.now());
+      setNow(Date.now());
       setSessionId(sid);
       setSpeakers(res.speakers);
       onChanged();
@@ -452,7 +477,6 @@ export function AudioCapturePanel({
       voices.current.clear();
       await Promise.race([Promise.all([...finals.current.values()]), sleep(15000)]);
       finals.current.clear();
-      setInterim({});
       picked.forEach((p) => onInterim?.(p.id, p.label, ""));
       await Promise.all([...captures.current.values()].map((c) => c.stop()));
       captures.current.clear();
@@ -496,271 +520,392 @@ export function AudioCapturePanel({
   }
 
   const lagging = Object.values(stats).some((s) => s.queued >= 3);
+  const elapsedSec = running && startedAt ? Math.max(0, Math.round((now - startedAt) / 1000)) : 0;
+  const clock = `${String(Math.floor(elapsedSec / 60)).padStart(2, "0")}:${String(elapsedSec % 60).padStart(2, "0")}`;
+  const interpret = streamingWanted && latency === "interpret";
+  const advSummary = [
+    streamingWanted ? t.audio.provider[sttProvider].split(" ")[0] : t.audio.chunkedShort,
+    streamingWanted ? (soniox && latency === "balanced" ? t.audio.latency.sonioxCaptions : t.audio.latency[latency]).replace(/\s*\(.*\)$/, "") : null,
+    interpret && !soniox ? t.audio.languageDetect.autoShort : langMode === "auto" ? t.audio.languageDetect.autoShort : langs.join("/"),
+    `${t.audio.noise.short} ${t.audio.noise.levelShort[noise]}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-  return (
-    <Card title={t.audio.title} className="mb-4">
-      <div className="space-y-4 text-sm" data-testid="audio-capture">
-        <p className="text-muted">{t.audio.intro}</p>
-        {error && <Alert tone="danger">{error}</Alert>}
-        {note && <Alert tone="warning">{note}</Alert>}
-        {orphan && (
-          <Alert tone="warning">
-            {t.audio.orphan}{" "}
-            <Button size="sm" onClick={() => void endOrphan()}>
-              {t.audio.endOrphan}
-            </Button>
-          </Alert>
+  const alerts = (
+    <>
+      {error && <Alert tone="danger" fred="sad">{error}</Alert>}
+      {note && <Alert tone="warning">{note}</Alert>}
+      {orphan && (
+        <Alert tone="warning">
+          {t.audio.orphan}{" "}
+          <Button size="sm" className="mt-1" onClick={() => void endOrphan()}>
+            {t.audio.endOrphan}
+          </Button>
+        </Alert>
+      )}
+    </>
+  );
+
+  if (running) {
+    const failing = picked.filter((p) => stats[p.id]?.lastError || conn[p.id] === "failed" || conn[p.id] === "reconnecting");
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" data-testid="audio-capture">
+        {/* Thin status bar: recording clock, one pill per source, caption controls, stop. */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-[clamp(14px,2.4vw,28px)] py-2 text-xs">
+          <span className="flex items-center gap-1.5 font-mono text-xs font-medium text-danger">
+            <span className="size-2 animate-rec rounded-full bg-danger" aria-hidden />
+            <span aria-label={t.audio.elapsed}>{clock}</span>
+          </span>
+          <span className="flex flex-wrap items-center gap-2" data-testid="audio-sources-live">
+            {picked.map((p) => {
+              const s = stats[p.id];
+              const level = Math.min(100, Math.round((s?.level ?? 0) * 400));
+              const state = conn[p.id];
+              const bad = state === "failed" || state === "reconnecting" || !!s?.lastError;
+              const passing = noise === "off" || gates[p.id];
+              return (
+                <span
+                  key={p.id}
+                  title={`${t.audio.sent}: ${s?.sent ?? 0} · ${t.audio.queued}: ${s?.queued ?? 0}${s?.errors ? ` · ${t.audio.errors}: ${s.errors}` : ""}${s?.echoes ? ` · ${t.audio.echoes}: ${s.echoes}` : ""}`}
+                  className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 whitespace-nowrap", bad ? "border-danger-line bg-danger-soft" : "border-line")}
+                >
+                  <span className="flex h-3 items-end gap-0.5" role="meter" aria-label={`${t.audio.level} ${p.label}`} aria-valuenow={level} aria-valuemin={0} aria-valuemax={100}>
+                    {[4, level > 30 ? 8 : 4, level > 65 ? 12 : 4].map((h, i) => (
+                      <span key={i} className={cn("w-[3px] rounded-[1px] transition-[height]", bad ? "bg-danger" : "bg-info")} style={{ height: h }} />
+                    ))}
+                  </span>
+                  <span className="max-w-36 truncate">{p.label}</span>
+                  {state && state !== "connected" ? (
+                    <span className={state === "failed" ? "text-danger" : "text-warning"}>{t.audio.conn[state]}</span>
+                  ) : (
+                    <>
+                      {/* Streaming: a green dot says the connection is up; the words say whether voice gets through. */}
+                      {state === "connected" && (
+                        <span className="size-1.5 rounded-full bg-success" title={t.audio.conn.connected}>
+                          <span className="sr-only">{t.audio.conn.connected}</span>
+                        </span>
+                      )}
+                      {noise !== "off" ? (
+                        <span className={passing ? "text-success" : "text-muted"}>{passing ? t.audio.noise.passing : t.audio.noise.blocking}</span>
+                      ) : (
+                        !state && <span className="text-success">{t.audio.listening}</span>
+                      )}
+                    </>
+                  )}
+                  <span className="sr-only" data-testid={`sent-${p.id}`}>
+                    {s?.sent ?? 0}
+                  </span>
+                </span>
+              );
+            })}
+          </span>
+          {lineCount !== undefined && (
+            <span className="text-muted">
+              {lineCount} {t.audio.lines}
+            </span>
+          )}
+          <span className="flex-1" />
+          <div className="flex flex-wrap items-center gap-1">
+            {toolbar}
+            <button
+              type="button"
+              onClick={() => void stop()}
+              disabled={busy}
+              className="ml-1 inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1 font-semibold text-bg disabled:opacity-60"
+              data-testid="stop-audio"
+            >
+              {busy && <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />}
+              {t.audio.stop}
+            </button>
+          </div>
+        </div>
+
+        {/* Problems sit under the bar so they never cover the captions. */}
+        {(error || note || lagging || failing.length > 0 || Object.values(stats).some((x) => x.echoes > 0)) && (
+          <div className="flex flex-col gap-2 px-[clamp(14px,2.4vw,28px)] pt-2.5">
+            {error && <Alert tone="danger" fred="sad">{error}</Alert>}
+            {failing.map((p) => (
+              <Alert key={p.id} tone="danger" fred="sad">
+                <b>{p.label}</b> · {conn[p.id] ? t.audio.conn[conn[p.id]] : t.audio.sttError}
+                {stats[p.id]?.lastError && ` — ${stats[p.id].lastError}`}
+              </Alert>
+            ))}
+            {note && <Alert tone="warning">{note}</Alert>}
+            {lagging && <Alert tone="warning">{t.audio.lag}</Alert>}
+            {Object.values(stats).some((x) => x.echoes > 0) && <Alert tone="info">{t.audio.echoTipLive}</Alert>}
+          </div>
         )}
 
-        {!running && !orphan && (
-          <>
-            <section>
-              <h3 className="mb-1 font-medium">{t.audio.meetingAudio}</h3>
-              <Button size="sm" onClick={() => void addSystem()} data-testid="add-system-audio">
-                {t.audio.addSystem}
-              </Button>
-              <p className="mt-1 text-xs text-muted">{t.audio.systemHelp}</p>
-            </section>
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col">{captions}</div>
+          <aside className="hidden w-[230px] shrink-0 flex-col gap-2.5 border-l border-line bg-surface p-4 @min-[1000px]:flex" data-testid="audio-speakers">
+            <span className="eyebrow text-muted">{t.audio.speakersHint}</span>
+            {speakers.length === 0 ? (
+              <p className="text-xs leading-normal text-muted">{t.audio.noSpeakers}</p>
+            ) : (
+              speakers.map((s, i) => (
+                <div key={s.speaker_key} className="flex items-center gap-2">
+                  <span className={cn("size-2.5 shrink-0 rounded-full", ["bg-spk1", "bg-spk2", "bg-spk3", "bg-info"][i % 4])} aria-hidden />
+                  <input
+                    aria-label={`${t.audio.rename} ${s.speaker_key}`}
+                    value={names[s.speaker_key] ?? s.display_name}
+                    maxLength={200}
+                    onChange={(e) => setNames({ ...names, [s.speaker_key]: e.target.value })}
+                    onBlur={() => names[s.speaker_key] && names[s.speaker_key] !== s.display_name && void rename(s.speaker_key)}
+                    onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                    className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm outline-none hover:border-line focus:border-info focus:bg-bg"
+                  />
+                  <span className="font-mono text-[11px] text-subtle">{s.segments}</span>
+                </div>
+              ))
+            )}
+            <p className="text-[11px] leading-normal text-subtle">{t.audio.unattributed}</p>
+            <div className="mt-auto flex flex-col items-center gap-2">
+              <Fred pose="headphones" alt={t.fred.listeningAlt} className="w-full animate-floaty" />
+              <FredSays className="bg-transparent p-0 text-center text-xs font-normal text-muted">{t.fred.listening}</FredSays>
+            </div>
+          </aside>
+        </div>
+      </div>
+    );
+  }
 
-            <section>
-              <h3 className="mb-1 font-medium">{t.audio.microphones}</h3>
-              {mics === null ? (
-                <Button size="sm" onClick={() => void loadMics()} data-testid="unlock-mics">
-                  {t.audio.unlock}
-                </Button>
-              ) : mics.length === 0 ? (
-                <p className="text-xs text-muted">{t.audio.noMics}</p>
-              ) : (
-                <ul className="space-y-1" data-testid="mic-list">
-                  {mics.map((d) => (
-                    <li key={d.deviceId}>
-                      <Checkbox label={d.label || d.deviceId} checked={picked.some((p) => p.deviceId === d.deviceId)} onChange={(e) => toggleMic(d, e.target.checked)} />
+  return (
+    <div className="mx-auto grid w-full max-w-[1100px] items-start gap-7 p-[clamp(16px,3vw,36px)] @min-[1100px]:grid-cols-[minmax(0,1fr)_340px]" data-testid="audio-capture">
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-1.5">
+          <span className="eyebrow text-[11px] tracking-[.08em] text-accent-text">{t.audio.setupEyebrow}</span>
+          <h2 className="font-display text-[clamp(22px,2.6vw,30px)] leading-[1.15] font-semibold">{t.audio.setupTitle}</h2>
+          <p className="text-sm text-muted">{t.audio.intro}</p>
+        </div>
+        {alerts}
+
+        {!orphan && (
+          <>
+            <div className="flex flex-col gap-2.5">
+              {picked.length > 0 && (
+                <ul className="flex flex-col gap-2.5" data-testid="picked-sources">
+                  {picked.map((p) => (
+                    <li key={p.id} className="flex flex-col gap-2.5 rounded-[14px] border border-line bg-surface p-3.5">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <Badge>{p.kind === "microphone" ? t.audio.kindMic : t.audio.kindMeeting}</Badge>
+                        <span className="min-w-28 flex-1 truncate text-[13px] text-muted">{p.kind === "microphone" ? (mics?.find((m) => m.deviceId === p.deviceId)?.label ?? t.audio.microphones) : t.audio.sharedTab}</span>
+                        <button type="button" onClick={() => remove(p.id)} className="text-[13px] text-muted hover:text-danger">
+                          {t.audio.remove}
+                        </button>
+                      </div>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-xs text-muted">{t.audio.labelFor}</span>
+                        <input
+                          value={p.label}
+                          maxLength={80}
+                          onChange={(e) => update(p.id, { label: e.target.value })}
+                          className="rounded-[10px] border border-line-strong bg-bg px-3 py-2 text-sm outline-none focus:border-info"
+                        />
+                      </label>
+                      <Checkbox label={t.audio.singleSpeaker} checked={p.singleSpeaker} onChange={(e) => update(p.id, { singleSpeaker: e.target.checked })} className="text-[13px] text-muted" />
+                      {p.kind === "system" && (
+                        <div className="flex items-start gap-2.5 rounded-[10px] bg-info-soft px-3 py-2.5 text-[13px] leading-normal">
+                          <span className="font-bold text-info" aria-hidden>
+                            i
+                          </span>
+                          <span>{t.audio.systemHelp}</span>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
-              <p className="mt-1 text-xs text-muted">{t.audio.echoTip}</p>
-            </section>
 
-            {picked.length > 0 && (
-              <ul className="divide-y divide-line rounded border border-line" data-testid="picked-sources">
-                {picked.map((p) => (
-                  <li key={p.id} className="flex flex-wrap items-center gap-2 p-2">
-                    <Badge tone={p.kind === "microphone" ? "info" : "brand"}>{p.kind === "microphone" ? "MIC" : "MEETING"}</Badge>
-                    <Input className="w-48" aria-label={t.audio.labelFor} value={p.label} maxLength={80} onChange={(e) => update(p.id, { label: e.target.value })} />
-                    <Checkbox label={t.audio.singleSpeaker} checked={p.singleSpeaker} onChange={(e) => update(p.id, { singleSpeaker: e.target.checked })} />
-                    <Button size="sm" variant="ghost" onClick={() => remove(p.id)}>
-                      {t.audio.remove}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
+              {mics && (
+                <div className="rounded-[14px] border border-line bg-surface p-3.5">
+                  <p className="mb-2 text-xs text-muted">{t.audio.microphones}</p>
+                  {mics.length === 0 ? (
+                    <p className="text-[13px] text-muted">{t.audio.noMics}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1.5" data-testid="mic-list">
+                      {mics.map((d) => (
+                        <li key={d.deviceId}>
+                          <Checkbox label={d.label || d.deviceId} checked={picked.some((p) => p.deviceId === d.deviceId)} onChange={(e) => toggleMic(d, e.target.checked)} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
 
-            <section>
-              <h3 className="mb-1 font-medium">{t.audio.languages}</h3>
-              {streamingWanted && latency === "interpret" && !soniox ? (
-                <p className="text-xs text-muted" data-testid="audio-languages-auto">{t.audio.languageDetect.interpret}</p>
-              ) : (
-                <>
-                  <div className="mb-2 flex flex-wrap gap-2" role="radiogroup" aria-label={t.audio.languages} data-testid="language-detection">
-                    {(["auto", "listed"] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        role="radio"
-                        aria-checked={langMode === m}
-                        onClick={() => setLangMode(m)}
-                        className={
-                          "rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition-colors " +
-                          (langMode === m ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
-                        }
-                      >
-                        {t.audio.languageDetect[m]}
-                      </button>
-                    ))}
-                  </div>
-                  {langMode === "listed" && (
-                    <div className="flex flex-wrap gap-4" data-testid="audio-languages">
-                      {ALL_LANGS.map((l) => (
-                        <Checkbox
-                          key={l}
-                          label={t.languages[l]}
-                          checked={langs.includes(l)}
-                          disabled={langs.length === 1 && langs.includes(l)}
-                          onChange={(e) => setLangs(e.target.checked ? ALL_LANGS.filter((x) => x === l || langs.includes(x)) : langs.filter((x) => x !== l))}
-                        />
+              <div className="flex flex-wrap gap-2">
+                {mics === null && (
+                  <button type="button" onClick={() => void loadMics()} className="rounded-[10px] border border-dashed border-line-strong px-3.5 py-2 text-[13px] hover:bg-surface-2" data-testid="unlock-mics">
+                    + {t.audio.addMic}
+                  </button>
+                )}
+                <button type="button" onClick={() => void addSystem()} className="rounded-[10px] border border-dashed border-line-strong px-3.5 py-2 text-[13px] hover:bg-surface-2" data-testid="add-system-audio">
+                  + {t.audio.addSystem}
+                </button>
+              </div>
+              {picked.length === 0 && <p className="text-[13px] text-muted">{t.audio.systemHelp}</p>}
+              <p className="text-xs text-subtle">{t.audio.echoTip}</p>
+            </div>
+
+            <div className="overflow-hidden rounded-[14px] border border-line">
+              <button
+                type="button"
+                onClick={() => setAdvanced(!advanced)}
+                aria-expanded={advanced}
+                className="flex w-full items-center gap-2.5 bg-surface px-4 py-3 text-left"
+                data-testid="advanced-toggle"
+              >
+                <span className="flex-1 text-sm font-semibold">{t.audio.advanced}</span>
+                <span className="hidden truncate text-xs text-muted sm:block">{advSummary}</span>
+                <span className="text-muted" aria-hidden>
+                  {advanced ? "▴" : "▾"}
+                </span>
+              </button>
+              {advanced && (
+                <div className="flex flex-col gap-4 border-t border-line bg-surface px-4 pt-2 pb-4">
+                  <OptionGroup label={t.audio.provider.title} hint={streamingWanted ? (sonioxReady ? t.audio.provider.hint[sttProvider] : t.audio.provider.needKey) : undefined}>
+                    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t.audio.provider.title} data-testid="stt-provider">
+                      {(["openai", "soniox"] as const).map((pv) => (
+                        <Chip
+                          key={pv}
+                          role="radio"
+                          on={sttProvider === pv}
+                          disabled={!streamingWanted || (pv === "soniox" && !sonioxReady)}
+                          onClick={() => {
+                            setSttProvider(pv);
+                            if (pv === "soniox" && latency !== "interpret") setLatency("balanced");
+                          }}
+                        >
+                          {t.audio.provider[pv]}
+                        </Chip>
                       ))}
                     </div>
-                  )}
-                  <p className="mt-1 text-xs text-muted">{langMode === "auto" ? t.audio.languageDetect.autoHint : t.audio.languagesHint}</p>
-                </>
-              )}
-            </section>
+                  </OptionGroup>
 
-            <section>
-              <h3 className="mb-1 font-medium">{t.audio.noise.title}</h3>
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.audio.noise.title} data-testid="noise-level">
-                {(["off", "standard", "strong"] as NoiseLevel[]).map((lv) => (
-                  <button
-                    key={lv}
-                    type="button"
-                    role="radio"
-                    aria-checked={noise === lv}
-                    onClick={() => setNoise(lv)}
-                    className={
-                      "rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition-colors " +
-                      (noise === lv ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
-                    }
+                  <OptionGroup
+                    label={t.audio.latency.title}
+                    hint={streamingWanted ? (soniox ? (latency === "interpret" ? t.audio.latency.hint.sonioxInterpret : t.audio.latency.hint.sonioxCaptions) : t.audio.latency.hint[latency]) : t.audio.chunkedHint}
                   >
-                    {t.audio.noise[lv]}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1 text-xs text-muted">{t.audio.noise.hint[noise]}</p>
-            </section>
-
-            <div className="flex flex-col items-start gap-2">
-              <Checkbox label={t.audio.streaming} checked={streamingWanted} onChange={(e) => setStreamingWanted(e.target.checked)} data-testid="audio-streaming" />
-              <p className="-mt-1 ml-6 text-xs text-muted">{streamingWanted ? t.audio.streamingHint : t.audio.chunkedHint}</p>
-              {streamingWanted && (
-                <div className="ml-6 flex flex-wrap items-center gap-2" role="radiogroup" aria-label={t.audio.provider.title} data-testid="stt-provider">
-                  <span className="text-xs font-bold">{t.audio.provider.title}:</span>
-                  {(["openai", "soniox"] as const).map((pv) => (
-                    <button
-                      key={pv}
-                      type="button"
-                      role="radio"
-                      aria-checked={sttProvider === pv}
-                      disabled={pv === "soniox" && !sonioxReady}
-                      onClick={() => {
-                        setSttProvider(pv);
-                        if (pv === "soniox" && latency !== "interpret") setLatency("balanced");
-                      }}
-                      className={
-                        "rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 " +
-                        (sttProvider === pv ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
-                      }
-                    >
-                      {t.audio.provider[pv]}
-                    </button>
-                  ))}
-                  <span className="w-full text-xs text-muted">{sonioxReady ? t.audio.provider.hint[sttProvider] : t.audio.provider.needKey}</span>
-                </div>
-              )}
-              {streamingWanted && (
-                <div className="ml-6 flex flex-wrap items-center gap-2" role="radiogroup" aria-label={t.audio.latency.title} data-testid="caption-latency">
-                  <span className="text-xs font-bold">{t.audio.latency.title}:</span>
-                  {(soniox ? (["interpret", "balanced"] as const) : (["interpret", "fast", "balanced", "accurate"] as const)).map((lv) => (
-                    <button
-                      key={lv}
-                      type="button"
-                      role="radio"
-                      aria-checked={latency === lv}
-                      onClick={() => setLatency(lv)}
-                      className={
-                        "rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition-colors " +
-                        (latency === lv ? "bg-brand-500 text-white" : "bg-white text-ink hover:bg-brand-50")
-                      }
-                    >
-                      {soniox && lv === "balanced" ? t.audio.latency.sonioxCaptions : t.audio.latency[lv]}
-                    </button>
-                  ))}
-                  <span className="w-full text-xs text-muted">
-                    {soniox ? (latency === "interpret" ? t.audio.latency.hint.sonioxInterpret : t.audio.latency.hint.sonioxCaptions) : t.audio.latency.hint[latency]}
-                  </span>
-                  {latency === "interpret" && !soniox && (
-                    <Checkbox label={t.audio.playVoice} checked={playVoice} onChange={(e) => setPlayVoice(e.target.checked)} data-testid="play-voice" />
-                  )}
-                </div>
-              )}
-              <Checkbox label={t.audio.translate} checked={translate} onChange={(e) => setTranslate(e.target.checked)} />
-              <Checkbox label={t.audio.consent} checked={consent} onChange={(e) => setConsent(e.target.checked)} data-testid="audio-consent" />
-            </div>
-            <Button variant="primary" onClick={() => void start()} loading={busy} disabled={!consent || picked.length === 0} data-testid="start-audio">
-              {t.audio.start}
-            </Button>
-          </>
-        )}
-
-        {running && (
-          <>
-            <ul className="space-y-2" data-testid="audio-sources-live">
-              {picked.map((p) => {
-                const s = stats[p.id];
-                return (
-                  <li key={p.id} className="flex flex-wrap items-center gap-3">
-                    <span className="w-40 truncate font-medium">{p.label}</span>
-                    <span className="h-2 w-40 overflow-hidden rounded bg-gray-200" aria-label={t.audio.level}>
-                      <span className="block h-full bg-emerald-500 transition-[width]" style={{ width: `${Math.min(100, Math.round((s?.level ?? 0) * 400))}%` }} />
-                    </span>
-                    <span className="text-xs text-muted">
-                      {t.audio.sent}: <b data-testid={`sent-${p.id}`}>{s?.sent ?? 0}</b> · {t.audio.queued}: {s?.queued ?? 0}
-                      {s?.errors ? ` · ${t.audio.errors}: ${s.errors}` : ""}
-                      {s?.echoes ? ` · ${t.audio.echoes}: ${s.echoes}` : ""}
-                    </span>
-                    {noise !== "off" && (
-                      <Badge tone={gates[p.id] ? "success" : "neutral"} title={t.audio.noise.title}>
-                        {gates[p.id] ? t.audio.noise.passing : t.audio.noise.blocking}
-                      </Badge>
+                    {streamingWanted && (
+                      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t.audio.latency.title} data-testid="caption-latency">
+                        {(soniox ? (["interpret", "balanced"] as const) : (["interpret", "fast", "balanced", "accurate"] as const)).map((lv) => (
+                          <Chip key={lv} role="radio" on={latency === lv} onClick={() => setLatency(lv)}>
+                            {soniox && lv === "balanced" ? t.audio.latency.sonioxCaptions : t.audio.latency[lv]}
+                          </Chip>
+                        ))}
+                      </div>
                     )}
-                    {conn[p.id] && <Badge tone={conn[p.id] === "connected" ? "success" : conn[p.id] === "failed" ? "danger" : "warning"}>{t.audio.conn[conn[p.id]]}</Badge>}
-                    {s?.lastError && <span className="text-xs text-red-700">{s.lastError}</span>}
-                  </li>
-                );
-              })}
-            </ul>
-            {!onInterim && Object.values(interim).some((x) => x.text || x.translation) && (
-              <div className="rounded-md border border-sky-200 bg-sky-50 p-3" data-testid="interim-captions" aria-live="polite">
-                <p className="mb-1 text-xs font-medium text-sky-900">{t.audio.speakingNow}</p>
-                {picked
-                  .filter((p) => interim[p.id]?.text || interim[p.id]?.translation)
-                  .map((p) => (
-                    <p key={p.id} className="text-base text-ink">
-                      <span className="mr-2 text-xs font-medium text-muted">{p.label}:</span>
-                      {interim[p.id].translation || interim[p.id].text}
-                      <span className="ml-0.5 animate-pulse">▍</span>
-                    </p>
-                  ))}
-              </div>
-            )}
-            {Object.values(stats).some((x) => x.echoes > 0) && <Alert tone="info">{t.audio.echoTipLive}</Alert>}
-            {lagging && <Alert tone="warning">{t.audio.lag}</Alert>}
-            <Button variant="danger" onClick={() => void stop()} loading={busy} data-testid="stop-audio">
-              {t.audio.stop}
-            </Button>
+                    <Checkbox label={t.audio.streaming} checked={streamingWanted} onChange={(e) => setStreamingWanted(e.target.checked)} data-testid="audio-streaming" className="text-[13px]" />
+                  </OptionGroup>
+
+                  <OptionGroup
+                    label={t.audio.languages}
+                    hint={interpret && !soniox ? undefined : langMode === "auto" ? t.audio.languageDetect.autoHint : t.audio.languagesHint}
+                  >
+                    {interpret && !soniox ? (
+                      <p className="text-[13px] text-muted" data-testid="audio-languages-auto">
+                        {t.audio.languageDetect.interpret}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t.audio.languages} data-testid="language-detection">
+                          {(["auto", "listed"] as const).map((m) => (
+                            <Chip key={m} role="radio" on={langMode === m} onClick={() => setLangMode(m)}>
+                              {t.audio.languageDetect[m]}
+                            </Chip>
+                          ))}
+                        </div>
+                        {langMode === "listed" && (
+                          <div className="flex flex-wrap gap-4" data-testid="audio-languages">
+                            {ALL_LANGS.map((l) => (
+                              <Checkbox
+                                key={l}
+                                label={t.languages[l]}
+                                checked={langs.includes(l)}
+                                disabled={langs.length === 1 && langs.includes(l)}
+                                onChange={(e) => setLangs(e.target.checked ? ALL_LANGS.filter((x) => x === l || langs.includes(x)) : langs.filter((x) => x !== l))}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </OptionGroup>
+
+                  <OptionGroup label={t.audio.noise.title} hint={t.audio.noise.hint[noise]}>
+                    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t.audio.noise.title} data-testid="noise-level">
+                      {(["off", "standard", "strong"] as NoiseLevel[]).map((lv) => (
+                        <Chip key={lv} role="radio" on={noise === lv} onClick={() => setNoise(lv)}>
+                          {t.audio.noise[lv]}
+                        </Chip>
+                      ))}
+                    </div>
+                  </OptionGroup>
+
+                  <div className="flex flex-col gap-2 pt-1">
+                    <Checkbox label={t.audio.translate} checked={translate} onChange={(e) => setTranslate(e.target.checked)} />
+                    {interpret && !soniox && <Checkbox label={t.audio.playVoice} checked={playVoice} onChange={(e) => setPlayVoice(e.target.checked)} data-testid="play-voice" />}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <label className={cn("flex cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 text-sm leading-normal", consent ? "border-line bg-surface" : "border-accent bg-accent-soft")}>
+              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 size-[18px] shrink-0 accent-accent" data-testid="audio-consent" />
+              <span>
+                {t.audio.consent} <span className="text-danger">*</span>
+              </span>
+            </label>
+
+            <div className="flex flex-wrap items-center gap-3.5">
+              <Button variant="primary" size="lg" onClick={() => void start()} loading={busy} disabled={!consent || picked.length === 0} data-testid="start-audio">
+                <span className="size-[9px] rounded-full bg-[#d93a2b]" aria-hidden />
+                {t.audio.start}
+              </Button>
+              <span className="text-[13px] text-muted">{!consent ? t.audio.needConsent : picked.length === 0 ? t.audio.needSource : t.audio.ready.replace("{n}", String(picked.length))}</span>
+            </div>
           </>
         )}
 
-        {(running || speakers.length > 0) && (
-          <section data-testid="audio-speakers">
-            <h3 className="mb-1 font-medium">{t.audio.speakers}</h3>
-            {speakers.length === 0 ? (
-              <p className="text-xs text-muted">{t.audio.noSpeakers}</p>
-            ) : (
-              <ul className="space-y-1">
-                {speakers.map((s) => (
-                  <li key={s.speaker_key} className="flex flex-wrap items-center gap-2">
-                    <Badge>{s.speaker_key}</Badge>
-                    <Input
-                      className="w-48"
-                      aria-label={`${t.audio.rename} ${s.speaker_key}`}
-                      value={names[s.speaker_key] ?? s.display_name}
-                      maxLength={200}
-                      onChange={(e) => setNames({ ...names, [s.speaker_key]: e.target.value })}
-                    />
-                    <Button size="sm" onClick={() => void rename(s.speaker_key)} disabled={!names[s.speaker_key] || names[s.speaker_key] === s.display_name}>
-                      {t.audio.save}
-                    </Button>
-                    <span className="text-xs text-muted">{s.segments}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="mt-1 text-xs text-muted">{t.audio.unattributed}</p>
+        {speakers.length > 0 && (
+          <section className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface p-3.5" data-testid="audio-speakers">
+            <h3 className="eyebrow text-muted">{t.audio.speakers}</h3>
+            {speakers.map((s) => (
+              <div key={s.speaker_key} className="flex flex-wrap items-center gap-2">
+                <Badge>{s.speaker_key}</Badge>
+                <input
+                  aria-label={`${t.audio.rename} ${s.speaker_key}`}
+                  value={names[s.speaker_key] ?? s.display_name}
+                  maxLength={200}
+                  onChange={(e) => setNames({ ...names, [s.speaker_key]: e.target.value })}
+                  className="w-48 rounded-lg border border-line-strong bg-bg px-2.5 py-1.5 text-sm outline-none focus:border-info"
+                />
+                <Button size="sm" onClick={() => void rename(s.speaker_key)} disabled={!names[s.speaker_key] || names[s.speaker_key] === s.display_name}>
+                  {t.audio.save}
+                </Button>
+                <span className="text-xs text-muted">{s.segments}</span>
+              </div>
+            ))}
           </section>
         )}
       </div>
-    </Card>
+
+      <div className="sticky top-24 hidden flex-col items-center @min-[1100px]:flex">
+        <FredSays className="max-w-[280px] self-start">{consent ? t.fred.setupReady : t.fred.setupDefaults}</FredSays>
+        <Fred pose={consent ? "pointing" : "crossed"} alt={consent ? t.fred.pointingAlt : t.fred.crossedAlt} className="w-[min(100%,360px)] drop-shadow-[0_20px_36px_rgba(0,0,0,.35)]" />
+      </div>
+    </div>
+  );
+}
+
+function OptionGroup({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 pt-2.5">
+      <span className="text-xs text-muted">{label}</span>
+      {children}
+      {hint && <p className="text-xs leading-normal text-subtle">{hint}</p>}
+    </div>
   );
 }

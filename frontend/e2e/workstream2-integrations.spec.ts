@@ -84,7 +84,8 @@ test("Sandbox platform connection → link Zoom meeting → fetch transcript →
   const body = await page.content();
   expect(body).not.toMatch(/zoom-(at|rt)-[0-9a-f]{12}/);
 
-  // New meeting in the seeded ALPHA project, platform = Zoom.
+  // New meeting in the seeded ALPHA project, platform = Zoom ("Cuộc họp" in the menu → "Cuộc họp mới").
+  await page.getByRole("link", { name: "Cuộc họp", exact: true }).first().click();
   await page.getByRole("link", { name: "Cuộc họp mới" }).first().click();
   const title = `Zoom sync E2E ${Date.now().toString().slice(-6)}`;
   await page

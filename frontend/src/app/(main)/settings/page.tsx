@@ -170,7 +170,7 @@ export default function SettingsPage() {
                   <Checkbox label={t.settings.makeDefault} checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} />
                 )}
                 <div>
-                  <p className="mb-1 text-xs font-medium text-gray-700">{t.settings.capabilities}</p>
+                  <p className="mb-1 text-xs font-medium text-muted">{t.settings.capabilities}</p>
                   <div className="flex flex-wrap gap-1">
                     {info.capabilities.map((c) => (
                       <Badge key={c} tone="brand">
@@ -217,7 +217,7 @@ export default function SettingsPage() {
                       {p?.requires_api_key ? (
                         <>
                           <Badge tone={c.has_usable_key ? "success" : "warning"}>{t.settings.keyStorage[c.key_storage]}</Badge> {c.key_hint}
-                          {c.key_storage === "session" && !c.has_usable_key && <p className="text-amber-700">{t.settings.keyMissingInSession}</p>}
+                          {c.key_storage === "session" && !c.has_usable_key && <p className="text-warning">{t.settings.keyMissingInSession}</p>}
                         </>
                       ) : (
                         <span className="text-muted">{t.common.none}</span>

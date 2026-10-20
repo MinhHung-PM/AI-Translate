@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Badge, Button, Field, Input, Textarea } from "@/components/ui";
 import { t } from "@/lib/i18n";
+import { usePrefs } from "@/lib/prefs";
 import { PM_KEYS, type DiscussionTopic, type NextMeeting, type OpenQuestion, type PMView } from "@/lib/types";
 import { EntryIdRefs } from "./source-refs";
 
@@ -25,11 +26,12 @@ interface Props {
 }
 
 export function SummaryEditor({ value, onChange, editable }: Props) {
+  const { theme } = usePrefs();
   if (!editable) {
     return <MDPreview source={value.executive_summary} />;
   }
   return (
-    <div data-color-mode="light" data-testid="summary-editor">
+    <div data-color-mode={theme} data-testid="summary-editor">
       <MDEditor
         value={value.executive_summary}
         onChange={(v) => onChange({ ...value, executive_summary: v ?? "" })}
@@ -44,8 +46,9 @@ export function SummaryEditor({ value, onChange, editable }: Props) {
 const MDMarkdown = dynamic(() => import("@uiw/react-md-editor").then((m) => m.default.Markdown), { ssr: false });
 
 function MDPreview({ source }: { source: string }) {
+  const { theme } = usePrefs();
   return (
-    <div data-color-mode="light" className="text-sm">
+    <div data-color-mode={theme} className="max-w-[72ch] text-[15px] leading-relaxed">
       <MDMarkdown source={source || t.common.none} />
     </div>
   );
@@ -79,7 +82,7 @@ export function DiscussionEditor({ value, onChange, editable, meetingId }: Props
   return (
     <div className="space-y-3">
       {topics.map((tp, i) => (
-        <div key={i} className="rounded-md border border-line p-3">
+        <div key={i} className="rounded-xl border border-line p-3">
           <div className="flex items-end gap-2">
             <Field label={t.memo.fields.topic} className="flex-1">
               {(id) => <Input id={id} value={tp.topic} onChange={(e) => update(i, { topic: e.target.value })} />}
@@ -168,33 +171,39 @@ export function NextMeetingEditor({ value, onChange, editable }: Props) {
   );
 }
 
+/** PM view: one row per dimension (cost, scope, quality, schedule, escalation, satisfaction). */
 export function PMViewEditor({ value, onChange, editable, meetingId }: Props) {
   const pm = value.pm_view;
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="flex flex-col">
       {PM_KEYS.map((key) => {
         const a = pm[key];
         return (
-          <div key={key} className="rounded-md border border-line p-3">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="text-sm font-medium">{t.memo.pm[key]}</span>
-              {a && <Badge tone={a.basis === "evidence" ? "success" : a.basis === "human" ? "neutral" : "warning"}>{t.memo.pm[a.basis]}</Badge>}
+          <div key={key} className="grid grid-cols-[96px_minmax(0,1fr)] gap-2.5 border-t border-line py-2 text-[13px] first:border-t-0">
+            <span className="text-muted">{t.memo.pm[key]}</span>
+            <div className="flex min-w-0 flex-col gap-1">
+              {editable ? (
+                <Textarea
+                  rows={2}
+                  aria-label={t.memo.pm[key]}
+                  value={a?.assessment ?? ""}
+                  className="min-h-0 px-2 py-1.5 text-[13px]"
+                  onChange={(e) => {
+                    const text = e.target.value;
+                    // A human edit replaces the AI basis label.
+                    onChange({ ...value, pm_view: { ...pm, [key]: text.trim() ? { assessment: text, basis: "human", source_entry_ids: a?.source_entry_ids ?? [] } : null } });
+                  }}
+                />
+              ) : (
+                <p className="leading-snug">{a?.assessment ?? <span className="text-muted">{t.common.none}</span>}</p>
+              )}
+              {a && (
+                <span className="flex flex-wrap items-center gap-1">
+                  <Badge tone={a.basis === "evidence" ? "success" : a.basis === "human" ? "neutral" : "warning"}>{t.memo.pm[a.basis]}</Badge>
+                  <EntryIdRefs meetingId={meetingId} ids={a.source_entry_ids} />
+                </span>
+              )}
             </div>
-            {editable ? (
-              <Textarea
-                rows={2}
-                aria-label={t.memo.pm[key]}
-                value={a?.assessment ?? ""}
-                onChange={(e) => {
-                  const text = e.target.value;
-                  // A human edit replaces the AI basis label.
-                  onChange({ ...value, pm_view: { ...pm, [key]: text.trim() ? { assessment: text, basis: "human", source_entry_ids: a?.source_entry_ids ?? [] } : null } });
-                }}
-              />
-            ) : (
-              <p className="text-sm">{a?.assessment ?? <span className="text-muted">{t.common.none}</span>}</p>
-            )}
-            {a && <EntryIdRefs meetingId={meetingId} ids={a.source_entry_ids} />}
           </div>
         );
       })}

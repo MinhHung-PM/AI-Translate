@@ -1,15 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Badge, Button, EmptyState, cn } from "@/components/ui";
-import { ActionStatusBadge, AiBadge, PriorityBadge, VerificationBadge } from "@/components/shared/status";
+import { Badge, Button, cn } from "@/components/ui";
+import { ActionStatusBadge, PriorityBadge, VerificationBadge } from "@/components/shared/status";
 import { formatDate } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { ActionItem, Decision, Issue, Member, Risk } from "@/lib/types";
 import { DEFAULTS, ITEM_FIELDS, createFields } from "./item-config";
 import { ItemEditor } from "./item-editor";
 import type { AnyItem, ItemKind } from "./item-fields";
-import { SourceRefs } from "./source-refs";
+import { SourceLink, SourceRefs } from "./source-refs";
 
 interface Props {
   kind: ItemKind;
@@ -38,7 +38,7 @@ function Details({ kind, item }: { kind: ItemKind; item: AnyItem }) {
         <span>
           {f.owner}: <b className="font-medium text-ink">{owner}</b>
         </span>
-        <span className={cn(a.is_overdue && "font-medium text-red-700")}>
+        <span className={cn(a.is_overdue && "font-medium text-danger")}>
           {f.due}: {a.due_date ? formatDate(a.due_date) : t.common.none}
           {a.due_text && ` (“${a.due_text}”)`}
         </span>
@@ -111,6 +111,7 @@ export function ItemList({ kind, items, meetingId, members, canEditContent, canT
   const [editing, setEditing] = useState<AnyItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [openSource, setOpenSource] = useState<string | null>(null);
   const canEditItem = kind === "action-items" ? canTrack : canEditContent;
   const newFields = useMemo(() => createFields(kind), [kind]);
 
@@ -124,58 +125,84 @@ export function ItemList({ kind, items, meetingId, members, canEditContent, canT
   }
 
   return (
-    <div className="space-y-2" data-testid={`items-${kind}`}>
-      {items.length === 0 && <EmptyState title={t.memo.noItems} />}
-      {items.map((item) => (
-        <article
-          key={item.id}
-          className={cn("rounded-md border border-line p-3", item.verification_status === "rejected" && "opacity-60", item.verification_status === "needs_review" && "border-amber-300 bg-amber-50/40")}
-          data-testid="memo-item"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                <span className="font-mono text-xs text-muted">{item.code}</span>
-                <AiBadge ai={item.ai_generated} />
-                <VerificationBadge status={item.verification_status} />
-                {item.confidence && <Badge title={t.memo.fields.confidence}>{t.confidence[item.confidence]}</Badge>}
-              </div>
-              <p className={cn("text-sm", item.verification_status === "rejected" && "line-through")}>{itemText(kind, item)}</p>
-              <div className="mt-1">
-                <Details kind={kind} item={item} />
-              </div>
-              {item.review_note && <p className="mt-1 text-xs text-amber-800">⚠ {item.review_note}</p>}
-              <SourceRefs meetingId={meetingId} sources={item.sources} />
+    <div className="flex flex-col gap-2" data-testid={`items-${kind}`}>
+      {items.length === 0 && <p className="py-1 text-sm text-muted">{t.memo.noItems}</p>}
+      {items.map((item) => {
+        const v = item.verification_status;
+        const open = openSource === item.id;
+        return (
+          <article
+            key={item.id}
+            className={cn(
+              "flex flex-col gap-2 rounded-xl border p-3",
+              v === "needs_review" ? "border-warning" : "border-line",
+              v === "confirmed" && "bg-surface-2",
+            )}
+            data-testid="memo-item"
+          >
+            <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+              <p className={cn("min-w-52 flex-1 text-[15px] leading-snug", v === "rejected" && "text-muted line-through")}>
+                <span className="mr-1.5 font-mono text-[11px] text-subtle">{item.code}</span>
+                {itemText(kind, item)}
+              </p>
+              <span className="flex flex-wrap items-center gap-1.5">
+                {item.ai_generated ? (
+                  <Badge tone="info" title={t.memo.fields.confidence}>
+                    AI{item.confidence && ` · ${t.confidence[item.confidence].toLowerCase()}`}
+                  </Badge>
+                ) : (
+                  <Badge title={t.common.humanEntered}>✎</Badge>
+                )}
+                <VerificationBadge status={v} />
+              </span>
             </div>
-            <div className="flex shrink-0 flex-wrap gap-1">
-              {canEditItem && item.verification_status !== "confirmed" && (
-                <Button size="sm" variant="primary" onClick={() => void verify(item, "confirmed")} loading={busyId === item.id} data-testid="confirm-item">
-                  {t.memo.confirmItem}
+            <Details kind={kind} item={item} />
+            {item.review_note && <p className="text-xs text-warning">⚠ {item.review_note}</p>}
+            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs">
+              {item.sources.length > 0 ? (
+                <span className="flex items-center gap-1.5">
+                  <SourceLink meetingId={meetingId} source={item.sources[0]} />
+                  {item.sources.some((src) => src.excerpt) && (
+                    <button type="button" onClick={() => setOpenSource(open ? null : item.id)} aria-expanded={open} className="text-info">
+                      {open ? `▴ ${t.memo.hideSource}` : `▾ ${t.memo.showSource}`}
+                    </button>
+                  )}
+                </span>
+              ) : (
+                <span className="text-muted">
+                  {t.common.source}: {t.common.none}
+                </span>
+              )}
+              <span className="flex-1" />
+              {canEditItem && v !== "confirmed" && (
+                <Button size="sm" variant="primary" className="h-7 px-3 text-xs" onClick={() => void verify(item, "confirmed")} loading={busyId === item.id} data-testid="confirm-item">
+                  ✓ {t.memo.confirmItem}
                 </Button>
               )}
-              {canEditItem && item.verification_status !== "rejected" && (
-                <Button size="sm" onClick={() => void verify(item, "rejected")} disabled={busyId === item.id}>
+              {canEditItem && v !== "rejected" && (
+                <button type="button" className="text-muted hover:text-ink disabled:opacity-50" onClick={() => void verify(item, "rejected")} disabled={busyId === item.id}>
                   {t.memo.rejectItem}
-                </Button>
+                </button>
               )}
               {canEditItem && (
-                <Button size="sm" variant="ghost" onClick={() => setEditing(item)}>
+                <button type="button" className="text-ink hover:underline" onClick={() => setEditing(item)}>
                   {t.common.edit}
-                </Button>
+                </button>
               )}
               {canEditContent && (
-                <Button size="sm" variant="danger" onClick={() => void onDelete(kind, item.id)}>
+                <button type="button" className="text-danger hover:underline" onClick={() => void onDelete(kind, item.id)}>
                   {t.common.delete}
-                </Button>
+                </button>
               )}
             </div>
-          </div>
-        </article>
-      ))}
+            {open && <SourceRefs meetingId={meetingId} sources={item.sources} />}
+          </article>
+        );
+      })}
       {canEditContent && (
-        <Button size="sm" onClick={() => setCreating(true)}>
+        <button type="button" onClick={() => setCreating(true)} className="self-start text-[13px] text-info">
           + {addLabel}
-        </Button>
+        </button>
       )}
       <ItemEditor
         open={editing !== null}

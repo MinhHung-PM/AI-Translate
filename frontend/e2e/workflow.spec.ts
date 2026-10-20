@@ -16,7 +16,7 @@ async function login(page: Page, email: string) {
 }
 
 async function createMeeting(page: Page, projectLabel: RegExp, title: string) {
-  await page.getByRole("link", { name: "Cuộc họp mới" }).first().click();
+  if (!page.url().endsWith("/meetings/new")) await page.getByRole("link", { name: "Cuộc họp mới" }).first().click();
   await page.getByLabel("Tiêu đề cuộc họp").filter({ visible: true }).fill(title);
   const projectSelect = page.locator('select[name="project_id"]');
   const option = projectSelect.locator("option", { hasText: projectLabel });
@@ -39,6 +39,7 @@ test("Create project → meeting → import → translate → memo → review �
   await expect(page.getByRole("link", { name: `Dự án kiểm thử ${code}` })).toBeVisible();
 
   // Create meeting (Teams platform shows "not configured", never "connected")
+  await page.getByRole("link", { name: "Cuộc họp", exact: true }).first().click();
   await page.getByRole("link", { name: "Cuộc họp mới" }).first().click();
   await page.getByLabel("Nền tảng họp").filter({ visible: true }).selectOption("teams");
   await expect(page.getByText("Chưa cấu hình tích hợp").first()).toBeVisible();
@@ -87,6 +88,7 @@ test("Create project → meeting → import → translate → memo → review �
 
   // Export approved memo (Markdown)
   const downloadPromise = page.waitForEvent("download");
+  await tid(page, "export-menu").click();
   await tid(page, "export-md").click();
   const download = await downloadPromise;
   const content = readFileSync((await download.path())!, "utf8");
@@ -95,11 +97,11 @@ test("Create project → meeting → import → translate → memo → review �
   expect(content).toContain("## E.");
 
   // Action tracker lists the meeting's actions
-  await page.getByRole("link", { name: "Theo dõi công việc" }).first().click();
+  await page.getByRole("link", { name: "Công việc", exact: true }).first().click();
   await expect(tid(page, "action-rows")).toContainText("Họp định nghĩa yêu cầu E2E");
 
   // History search finds the meeting with approved memo
-  await page.getByRole("link", { name: "Lịch sử cuộc họp" }).first().click();
+  await page.getByRole("link", { name: "Cuộc họp", exact: true }).first().click();
   await page.getByLabel("Tìm kiếm").filter({ visible: true }).fill("định nghĩa yêu cầu E2E");
   await expect(tid(page, "history-rows")).toContainText("Đã duyệt");
 });

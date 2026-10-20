@@ -1,63 +1,161 @@
 @import "tailwindcss";
 
-/* "Ninja manga" theme (anime-inspired, no copyrighted characters or symbols):
-   blazing orange accent, deep navy ink, warm scroll-paper canvas, bold comic-panel outlines. */
-@theme {
-  --color-brand-50: #fff4e6;
-  --color-brand-100: #ffe1bf;
-  --color-brand-500: #f97316;
-  --color-brand-600: #ea580c;
-  --color-brand-700: #b8410a;
-  --color-ink: #1b2440;
-  --color-muted: #5d6680;
-  --color-line: #e6dcc8;
-  --color-surface: #ffffff;
-  --color-canvas: #fdf6e9;
-  --color-navy-900: #141b33;
-  --color-navy-800: #1b2440;
-  --color-navy-700: #263257;
-  --color-scroll: #f6e7c8;
-  --shadow-panel: 4px 4px 0 0 #1b2440;
-  --shadow-panel-sm: 2px 2px 0 0 #1b2440;
+/* Memo Hub "cùng Fred" theme: graphite surfaces, Fred's mustard-suit accent, visor-blue info.
+   Dark is the default; [data-theme="light"] on <html> switches every token (see lib/prefs.tsx).
+   Colours are CSS variables so Tailwind utilities (bg-surface, text-muted…) follow the theme. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-nav: var(--nav);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-line: var(--danger-line);
+  --color-spk1: var(--spk1);
+  --color-spk1-soft: var(--spk1-soft);
+  --color-spk2: var(--spk2);
+  --color-spk2-soft: var(--spk2-soft);
+  --color-spk3: var(--spk3);
+  --color-spk3-soft: var(--spk3-soft);
+  --color-bubble: var(--bubble);
+  --color-bubble-ink: var(--bubble-ink);
+  /* Legacy names kept so the remaining screens follow the theme too. */
+  --color-brand-50: var(--accent-soft);
+  --color-brand-100: var(--accent-soft);
+  --color-brand-500: var(--accent);
+  --color-brand-600: var(--accent);
+  --color-brand-700: var(--accent-text);
+  --color-canvas: var(--bg);
+  --color-scroll: var(--surface-2);
+  --shadow-panel: var(--shadow);
+  --shadow-pop: var(--shadow);
+
   /* Vietnamese-complete fonts first: Japanese UI fonts (Yu Gothic, Hiragino) lack precomposed Vietnamese
-     letters (ấ, ả, ố…), which Chromium then renders as a base letter + a detached accent. They stay as
-     per-glyph fallbacks for kanji and kana. */
-  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, "Noto Sans", "Helvetica Neue", Arial, "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+     letters (ấ, ả, ố…), which Chromium then renders as a base letter + a detached accent. Noto Sans JP and
+     the system JP fonts stay as per-glyph fallbacks for kanji and kana. */
+  --font-sans: "Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-display: "Unbounded", "Be Vietnam Pro", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141518;
+  --nav: #101113;
+  --surface: #1c1d21;
+  --surface-2: #24252a;
+  --line: #2c2d33;
+  --line-strong: #3c3d44;
+  --text: #f2eee7;
+  --muted: #a9a7a1;
+  --subtle: #7f7e78;
+  --accent: #e8a93b;
+  --accent-ink: #1a1b1e;
+  --accent-text: #f0b955;
+  --accent-soft: #2c261b;
+  --info: #8fdcf2;
+  --info-soft: #16303a;
+  --success: #8fd9a8;
+  --success-soft: #173022;
+  --warning: #f0b955;
+  --warning-soft: #33280f;
+  --danger: #ff8a7d;
+  --danger-soft: #341c1a;
+  --danger-line: #5a2f2b;
+  --spk1: #c9bff5;
+  --spk1-soft: #2c2840;
+  --spk2: #f0b955;
+  --spk2-soft: #33280f;
+  --spk3: #8fd9a8;
+  --spk3-soft: #173022;
+  --bubble: #f2eee7;
+  --bubble-ink: #1a1b1e;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f4ef;
+  --nav: #efece5;
+  --surface: #ffffff;
+  --surface-2: #f1eee8;
+  --line: #e3dfd6;
+  --line-strong: #cfc9bd;
+  --text: #1a1b1e;
+  --muted: #5d5b56;
+  --subtle: #86837c;
+  --accent: #e8a93b;
+  --accent-ink: #1a1b1e;
+  --accent-text: #8a5a00;
+  --accent-soft: #fbf0d9;
+  --info: #1d6a86;
+  --info-soft: #e3f2f7;
+  --success: #22744a;
+  --success-soft: #e2f3e8;
+  --warning: #8a5a00;
+  --warning-soft: #fbefd3;
+  --danger: #b23a2f;
+  --danger-soft: #fbe7e4;
+  --danger-line: #efc2bc;
+  --spk1: #5b46b8;
+  --spk1-soft: #ebe7fb;
+  --spk2: #8a5a00;
+  --spk2-soft: #fbefd3;
+  --spk3: #22744a;
+  --spk3-soft: #e2f3e8;
+  --bubble: #1c1d21;
+  --bubble-ink: #f2eee7;
+  --shadow: 0 12px 32px rgba(40, 30, 10, 0.12);
 }
 
 html,
 body {
-  color: var(--color-ink);
+  color: var(--text);
+  background-color: var(--bg);
   font-family: var(--font-sans);
-  /* Manga halftone dots on warm scroll paper. */
-  background-color: var(--color-canvas);
-  background-image: radial-gradient(rgb(27 36 64 / 0.07) 1px, transparent 1.2px);
-  background-size: 14px 14px;
 }
 
 :focus-visible {
-  outline: 3px solid var(--color-brand-500);
+  outline: 2px solid var(--info);
   outline-offset: 2px;
 }
 
-/* Comic panel: thick ink outline + offset shadow. */
+/* Card surface: hairline border, no comic shadow. */
 @utility panel {
-  border: 2px solid var(--color-ink);
-  border-radius: 14px;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
 }
 
-/* Speed-line stripe used behind headings. */
-@utility speed-lines {
-  background-image: repeating-linear-gradient(-55deg, rgb(249 115 22 / 0.18) 0 6px, transparent 6px 14px);
+/* Mono uppercase label (section eyebrows, table heads). */
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 @keyframes caption-in {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.98);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -68,38 +166,52 @@ body {
   animation: caption-in 0.28s ease-out both;
 }
 
-@keyframes typing-dot {
-  0%, 80%, 100% {
-    opacity: 0.25;
-    transform: translateY(0);
-  }
-  40% {
-    opacity: 1;
-    transform: translateY(-3px);
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
   }
 }
-@utility typing-dot {
-  animation: typing-dot 1.2s infinite ease-in-out;
+@utility animate-caret {
+  animation: caret-blink 1s steps(1) infinite;
 }
 
-@keyframes spin-slow {
-  to {
-    transform: rotate(360deg);
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
   }
 }
-@utility animate-spin-slow {
-  animation: spin-slow 6s linear infinite;
+@utility animate-floaty {
+  animation: floaty 6s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@utility animate-rec {
+  animation: rec-pulse 1.6s infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-caption-in,
-  .typing-dot,
-  .animate-spin-slow {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }
 
 .wmde-markdown {
   font-family: var(--font-sans) !important;
   background: transparent !important;
+  color: var(--text) !important;
 }
