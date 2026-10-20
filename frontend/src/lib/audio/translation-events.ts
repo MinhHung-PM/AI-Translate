@@ -6,31 +6,45 @@
  *   session.output_transcript.delta {delta, elapsed_ms}  translated words
  *   session.output_audio.delta / session.created / session.updated / session.closed
  *   error {error: {message}}
- * Deltas are append-only: there are no items and no "completed" event, so the
- * browser cuts the stream into sentences itself — after a pause (no new words
- * for `idleMs`) or at a sentence end once a bubble gets long.
+ * Deltas are append-only, with no items and no "completed" event, and the two streams are
+ * independent: the interpreter trails the speaker by a few seconds, and the source transcript
+ * can arrive before or after its translation. Cutting both streams at the same pause pairs a
+ * sentence with the wrong translation, so they are segmented separately:
+ *   - source sentences end at sentence punctuation or after a short pause;
+ *   - each finished translated sentence is paired with the oldest unpaired source sentence
+ *     (plus any that are clearly stale), waiting briefly for the source if it has not arrived;
+ *   - source sentences that never get a translation (speech already in the target language)
+ *     are emitted on their own, and the server translates or keeps them.
+ * A sentence whose source never arrived is emitted with empty `text` (shown as "no original").
  */
-import type { FinalUtterance, RealtimeHandlers } from "./realtime-events";
+import type { RealtimeHandlers } from "./realtime-events";
 
-const SENTENCE_END = /[.!?。！？…]\s*$/;
+const SENTENCE_END = /[.!?。！？…]["」』)）]?\s*$/;
+
+interface Sentence {
+  text: string;
+  startAt: number;
+  endAt: number;
+}
 
 export class TranslationEventProcessor {
-  private original = "";
-  private translation = "";
-  private startMs: number | null = null;
-  private lastAt = 0;
+  /** Source sentence being heard, and finished source sentences waiting for their translation. */
+  private inCur: Sentence | null = null;
+  private inDone: Sentence[] = [];
+  /** Translated sentence being spoken, and a finished one waiting for its source. */
+  private outCur: Sentence | null = null;
+  private outWaiting: (Sentence & { since: number }) | null = null;
+  private lastOutAt = 0;
   private seq = 0;
-  private itemId = "";
+  private liveId = "";
   /** Capture-clock time (ms) at which this connection's audio started. */
   baseMs = 0;
   now: () => number = () => this.baseMs;
-  /** A bubble longer than this is closed at the next sentence end. */
-  maxChars = 160;
 
   constructor(private readonly h: RealtimeHandlers) {}
 
   handle(raw: string): void {
-    let ev: { type?: string; delta?: unknown; elapsed_ms?: unknown; error?: { message?: string } };
+    let ev: { type?: string; delta?: unknown; error?: { message?: string } };
     try {
       ev = JSON.parse(raw);
     } catch {
@@ -44,42 +58,97 @@ export class TranslationEventProcessor {
     if (!input && ev.type !== "session.output_transcript.delta") return;
     if (typeof ev.delta !== "string" || !ev.delta) return;
     const now = this.now();
-    if (this.startMs === null) {
-      const elapsed = typeof ev.elapsed_ms === "number" ? ev.elapsed_ms : null;
-      // elapsed_ms marks the end of the audio window that produced the words.
-      this.startMs = Math.max(0, Math.round(elapsed !== null ? Math.min(this.baseMs + elapsed, now) : now) - 1000);
-      this.itemId = `tr-${Math.round(this.baseMs)}-${++this.seq}`;
+    if (input) {
+      this.inCur ??= { text: "", startAt: now, endAt: now };
+      this.inCur.text += ev.delta;
+      this.inCur.endAt = now;
+      if (SENTENCE_END.test(this.inCur.text)) this.closeInput();
+      if (this.outWaiting) this.pairWaiting(false); // its source may have just arrived
+    } else {
+      this.outCur ??= { text: "", startAt: now, endAt: now };
+      this.outCur.text += ev.delta;
+      this.outCur.endAt = now;
+      this.lastOutAt = now;
+      if (SENTENCE_END.test(this.outCur.text)) this.closeOutput();
     }
-    if (input) this.original += ev.delta;
-    else this.translation += ev.delta;
-    this.lastAt = now;
-    this.h.onInterim(this.itemId, this.original.trim(), this.translation.trim());
-    if (!input && this.translation.length >= this.maxChars && SENTENCE_END.test(this.translation)) this.cut();
+    this.emitInterim();
   }
 
-  /** Close the current bubble when no words arrived for `idleMs` (speaker paused). */
+  /**
+   * Called a few times per second (``idleMs`` ≈ 1.3 s), and with 0 on stop to flush everything:
+   * closes sentences whose stream went quiet and emits sentences that waited long enough.
+   */
   flushIdle(idleMs: number): void {
-    if (this.startMs === null) return;
-    // The interpreter waits for context, so its words can trail the speaker: give an
-    // unfinished translation longer before closing the bubble.
-    const wait = idleMs && !SENTENCE_END.test(this.translation) ? idleMs * 2 : idleMs;
-    if (this.now() - this.lastAt >= wait) this.cut();
+    const force = idleMs === 0;
+    const now = this.now();
+    if (this.inCur && (force || now - this.inCur.endAt >= idleMs + 200)) this.closeInput();
+    if (this.outCur && (force || now - this.outCur.endAt >= idleMs)) this.closeOutput();
+    // A waiting translation pairs as soon as its source closed, or goes alone after a while.
+    if (this.outWaiting) this.pairWaiting(force || now - this.outWaiting.since >= idleMs * 2);
+    // Source sentences that got no translation at all (e.g. already in the target language).
+    const quiet = !this.outCur && !this.outWaiting && (force || now - this.lastOutAt >= idleMs * 2);
+    while (this.inDone.length && quiet && (force || now - this.inDone[0].endAt >= idleMs * 3)) {
+      this.emit([this.inDone.shift()!], null);
+    }
+    this.emitInterim();
   }
 
-  private cut(): void {
-    if (this.startMs === null) return;
-    const u: FinalUtterance = {
-      itemId: this.itemId,
-      text: this.original.trim(),
-      translation: this.translation.trim(),
-      startMs: this.startMs,
-      durationMs: Math.max(0, Math.round(this.lastAt - this.startMs)),
+  private closeInput(): void {
+    const s = this.inCur;
+    this.inCur = null;
+    if (s && s.text.trim()) this.inDone.push(s);
+  }
+
+  private closeOutput(): void {
+    const s = this.outCur;
+    this.outCur = null;
+    if (!s || !s.text.trim()) return;
+    if (this.outWaiting) this.pairWaiting(true); // never hold two translations
+    this.outWaiting = { ...s, since: this.now() };
+    this.pairWaiting(false);
+  }
+
+  /** Pair the waiting translation with its source; ``force`` emits it even without one. */
+  private pairWaiting(force: boolean): void {
+    const out = this.outWaiting;
+    if (!out) return;
+    if (!this.inDone.length && this.inCur && force) this.closeInput(); // partial source is better than none
+    if (!this.inDone.length && !force) return; // the source transcript may still be on its way
+    const sources = this.inDone.splice(0, 1);
+    // Source sentences that ended well before this translation began were merged into it by the
+    // interpreter (it often joins short sentences): keep them with it instead of drifting.
+    while (this.inDone.length && this.inDone[0].endAt <= out.startAt) sources.push(this.inDone.shift()!);
+    this.outWaiting = null;
+    this.emit(sources, out);
+  }
+
+  private emit(sources: Sentence[], out: Sentence | null): void {
+    const text = sources.map((s) => s.text.trim()).join(" ").trim();
+    const translation = out?.text.trim() ?? "";
+    if (!text && !translation) return;
+    // The source's timing when there is one; a translation trails its speech by about a second.
+    const startAt = sources.length ? Math.min(...sources.map((s) => s.startAt)) : (out?.startAt ?? 0) - 1000;
+    const endAt = Math.max(...sources.map((s) => s.endAt), out?.endAt ?? 0);
+    this.h.onFinal({
+      itemId: `tr-${Math.round(this.baseMs)}-${++this.seq}`,
+      text,
+      translation,
+      startMs: Math.max(0, Math.round(startAt)),
+      durationMs: Math.max(0, Math.round(endAt - startAt)),
       speaker: null,
-    };
-    this.original = "";
-    this.translation = "";
-    this.startMs = null;
-    this.h.onInterim(u.itemId, "", "");
-    if (u.text || u.translation) this.h.onFinal(u);
+    });
+  }
+
+  /** One live line per source: unpaired source words + the translation being spoken. */
+  private emitInterim(): void {
+    const original = [...this.inDone.map((s) => s.text), this.inCur?.text ?? ""].join(" ").replace(/\s+/g, " ").trim();
+    const translation = [this.outWaiting?.text ?? "", this.outCur?.text ?? ""].join(" ").replace(/\s+/g, " ").trim();
+    if (original || translation) {
+      this.liveId ||= `tr-live-${Math.round(this.baseMs)}`;
+      this.h.onInterim(this.liveId, original, translation);
+    } else if (this.liveId) {
+      this.h.onInterim(this.liveId, "", "");
+      this.liveId = "";
+    }
   }
 }

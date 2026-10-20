@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Fred, cn } from "@/components/ui";
-import { formatMs } from "@/lib/format";
+import { formatMs, originalMissing } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { TranscriptEntry } from "@/lib/types";
 
@@ -113,8 +113,14 @@ export function LiveCaptionFeed({
                   )}
                   {!prefs.onlyTranslation && (
                     <p className="leading-normal text-muted" style={{ fontSize: fsSrc }}>
-                      {e.source_language && <span className="mr-1.5 rounded bg-surface-2 px-1 align-middle font-mono text-[10px] uppercase">{e.source_language}</span>}
-                      {e.original_text}
+                      {originalMissing(e) ? (
+                        <span className="italic" data-testid="original-missing">{t.captions.noOriginal}</span>
+                      ) : (
+                        <>
+                          {e.source_language && <span className="mr-1.5 rounded bg-surface-2 px-1 align-middle font-mono text-[10px] uppercase">{e.source_language}</span>}
+                          {e.original_text}
+                        </>
+                      )}
                     </p>
                   )}
                   {tr?.ambiguity_note && <p className="text-xs text-warning">⚠ {tr.ambiguity_note}</p>}

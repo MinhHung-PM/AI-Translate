@@ -68,7 +68,7 @@ def test_ai_settings_are_managed_on_the_server(shared, db):
     user = db.scalar(select(User).where(User.email == "team@memohub.local"))
     resolved = resolve_provider(db, user.id, None)
     assert resolved.key_source == "server" and resolved.credentials.api_key == SERVER_KEY
-    assert resolved.model == "gpt-4.1-mini"
+    assert resolved.model == "gpt-4.1"
     stt, source = resolve_stt(db, user.id, None)
     assert source == "server" and not stt.is_mock
     with pytest.raises(Exception, match="SONIOX_API_KEY"):

@@ -556,6 +556,7 @@ export const vi = {
   },
   captions: {
     title: "PHỤ ĐỀ TRỰC TIẾP",
+    noOriginal: "(không nhận được lời gốc — chỉ có bản dịch)",
     textSize: "Cỡ chữ",
     smaller: "Chữ nhỏ hơn",
     larger: "Chữ lớn hơn",
@@ -692,8 +693,8 @@ export const vi = {
       strong: "Mạnh — phòng ồn",
       hint: {
         off: "Gửi âm thanh gốc. Chỉ nên dùng khi môi trường rất yên tĩnh hoặc âm thanh đã được xử lý sẵn.",
-        standard: "Micro: lọc tiếng ù, tiếng xì và hạ nhỏ tạp âm giữa các câu. Âm thanh cuộc họp/tab: chỉ lọc ù/xì (Teams, Zoom, YouTube đã tự lọc ồn; chặn thêm có thể làm mất chữ khi nói nhỏ hoặc có nhạc nền).",
-        strong: "Chặn tạp âm sâu cho mọi nguồn — phòng đông người, quán cà phê, văn phòng mở. Giọng nói rất nhỏ có thể bị coi là tạp âm.",
+        standard: "Lọc nhẹ: bộ lọc tạp âm của trình duyệt (micro) + lọc tiếng ù. Giữ trọn âm cuối và thanh điệu — nhận dạng tiếng Việt chính xác nhất.",
+        strong: "Chặn tạp âm sâu cho mọi nguồn (thêm cổng chặn tiếng nhỏ, lọc xì và lọc ồn phía nhà cung cấp) — phòng đông người, quán cà phê. Giọng nhỏ, âm cuối có thể bị mất.",
       },
       passing: "đang nghe giọng nói",
       blocking: "đang chặn tạp âm",

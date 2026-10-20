@@ -87,7 +87,7 @@ EMBEDDED_WORKER=false
 SECRET_ENCRYPTION_KEYS=${kid}:$secret
 POSTGRES_PASSWORD=$pg
 OPENAI_API_KEY=$openai
-SERVER_AI_MODEL=gpt-4.1-mini
+SERVER_AI_MODEL=gpt-4.1
 SONIOX_API_KEY=$soniox
 "@
   Write-Host "Da tao $EnvFile"
@@ -97,6 +97,11 @@ SONIOX_API_KEY=$soniox
   $text = $text -replace '(?m)^LAN_HOST=.*$', "LAN_HOST=$Ip" -replace '(?m)^TRUSTED_HOSTS=.*$', "TRUSTED_HOSTS=$Ip" -replace '(?m)^PUBLIC_BASE_URL=.*$', "PUBLIC_BASE_URL=https://$Ip"
   # The API port is only for local diagnostics: keep it off 8000, which the dev stack uses.
   if ($text -notmatch '(?m)^API_PORT=') { $text = $text.TrimEnd() + "`nAPI_PORT=18000`n" }
+  # The old default translation model translated Japanese <-> Vietnamese noticeably worse.
+  if ($text -match '(?m)^SERVER_AI_MODEL=gpt-4\.1-mini[ \t]*$') {
+    $text = $text -replace '(?m)^SERVER_AI_MODEL=gpt-4\.1-mini[ \t]*$', 'SERVER_AI_MODEL=gpt-4.1'
+    Write-Host "Da doi model dich sang gpt-4.1 (chinh xac hon; muon tiet kiem: sua SERVER_AI_MODEL trong $EnvFile)."
+  }
   Write-Utf8Lf $EnvFile $text
 }
 

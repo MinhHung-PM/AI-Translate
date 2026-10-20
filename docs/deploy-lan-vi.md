@@ -55,7 +55,7 @@ IP đổi (DHCP): chạy lại `.\start-lan.ps1` — script tự cập nhật đ
 | Dừng site (giữ dữ liệu) | `.\start-lan.ps1 stop` |
 | Sao lưu database | `.\start-lan.ps1 backup` → `backups\memohub-<ngày-giờ>.sql` (nên chạy hằng tuần) |
 | Đổi API key | sửa `OPENAI_API_KEY` / `SONIOX_API_KEY` trong `.env.lan`, rồi `.\start-lan.ps1` |
-| Đổi model dịch/biên bản | `SERVER_AI_MODEL` trong `.env.lan` (mặc định `gpt-4.1-mini`) |
+| Đổi model dịch/biên bản | `SERVER_AI_MODEL` trong `.env.lan` (mặc định `gpt-4.1`; `gpt-4.1-mini` rẻ hơn ~5 lần nhưng dịch Nhật↔Việt kém hơn) |
 | Xem log | `docker compose -p memohub-lan --env-file .env.lan --profile lan logs --tail=100` |
 
 Trên chính máy bạn có thể dùng `http://localhost:3000` (localhost được trình duyệt coi là an toàn).

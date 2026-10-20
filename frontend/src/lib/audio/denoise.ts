@@ -13,10 +13,13 @@ export interface DenoisedSource {
 const GATE_URL = "/audio-worklets/noise-gate.js";
 
 /**
- * Noise suppression chain (Web Audio), applied before recognition:
- *   high-pass 90 Hz (hum, air-con, desk rumble)
- *   → low-pass 7.5 kHz (hiss; speech intelligibility lives below ~7 kHz)
- *   → adaptive noise gate (public/audio-worklets/noise-gate.js)
+ * Noise suppression chain (Web Audio), applied before recognition. Stacked suppressors (browser +
+ * gate + provider) clip soft syllables and word endings — Vietnamese tones and final consonants
+ * suffer first — so the levels add processing gradually:
+ *   standard: high-pass 90 Hz only (hum, air-con, desk rumble); the browser's own noise suppression
+ *             (microphones) does the rest
+ *   strong:   + low-pass 7.5 kHz (hiss) + adaptive noise gate (public/audio-worklets/noise-gate.js),
+ *             and the provider's noise reduction (server side)
  * "off" returns the original stream untouched.
  */
 export async function denoise(input: MediaStream, level: NoiseLevel, kind: "microphone" | "other" = "microphone"): Promise<DenoisedSource> {
@@ -32,11 +35,11 @@ export async function denoise(input: MediaStream, level: NoiseLevel, kind: "micr
   hp.Q.value = 0.7;
   const lp = ctx.createBiquadFilter();
   lp.type = "lowpass";
-  lp.frequency.value = 7500;
+  lp.frequency.value = level === "strong" ? 7500 : 20000; // effectively off below "strong"
   lp.Q.value = 0.7;
-  // Meeting / tab audio is already cleaned by Teams/Zoom/YouTube; gating it can swallow quiet speech or
-  // speech over music, so the gate only runs on microphones unless "strong" is chosen.
-  const useGate = kind === "microphone" || level === "strong";
+  // The gate swallows quiet speech and word endings: only for "strong" (noisy rooms).
+  void kind;
+  const useGate = level === "strong";
   const gate = new AudioWorkletNode(ctx, "noise-gate", {
     numberOfInputs: 1,
     numberOfOutputs: 1,

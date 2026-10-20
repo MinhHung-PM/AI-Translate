@@ -649,7 +649,8 @@ def realtime_token(
         raise ProviderNotConfigured("Streaming captions need an OpenAI API key (AI Settings).")
     noise_reduction = (
         None
-        if config.get("noise_suppression") == "off"
+        # Only for "strong": stacked with the browser's suppressor it clips soft syllables.
+        if config.get("noise_suppression") != "strong"
         else ("near_field" if source.get("kind") == "microphone" else "far_field")
     )
     try:

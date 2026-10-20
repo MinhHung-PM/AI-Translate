@@ -14,61 +14,113 @@ function setup() {
   });
   p.baseMs = 10_000;
   p.now = () => clock;
-  const send = (ev: object) => p.handle(JSON.stringify(ev));
-  const tick = (ms: number) => (clock += ms);
-  return { p, interim, finals, errors, send, tick };
+  const src = (delta: string) => p.handle(JSON.stringify({ type: "session.input_transcript.delta", delta }));
+  const out = (delta: string) => p.handle(JSON.stringify({ type: "session.output_transcript.delta", delta }));
+  const tick = (ms: number) => {
+    clock += ms;
+    p.flushIdle(1300);
+  };
+  const pairs = () => finals.map((f) => [f.text, f.translation]);
+  return { p, interim, finals, errors, src, out, tick, pairs };
 }
 
 describe("TranslationEventProcessor", () => {
-  it("streams translated words with the original and closes the bubble after a pause", () => {
-    const { p, interim, finals, send, tick } = setup();
-    tick(1400);
-    send({ type: "session.input_transcript.delta", delta: "本日の", elapsed_ms: 1400 });
-    tick(200);
-    send({ type: "session.output_transcript.delta", delta: "Chủ đề ", elapsed_ms: 1600 });
-    tick(200);
-    send({ type: "session.input_transcript.delta", delta: "議題です。", elapsed_ms: 1800 });
-    send({ type: "session.output_transcript.delta", delta: "hôm nay.", elapsed_ms: 1800 });
-    expect(interim.at(-1)).toEqual({ text: "本日の議題です。", translation: "Chủ đề hôm nay." });
-    send({ type: "session.output_audio.delta", delta: "AAAA" }); // translated speech: not text
-    tick(1000);
-    p.flushIdle(1300);
-    expect(finals).toHaveLength(0);
-    tick(400);
-    p.flushIdle(1300);
-    expect(finals).toEqual([
-      { itemId: expect.stringMatching(/^tr-/), text: "本日の議題です。", translation: "Chủ đề hôm nay.", startMs: 10_400, durationMs: 1400, speaker: null },
+  it("pairs each translated sentence with its own source sentence", () => {
+    const { src, out, tick, pairs, interim, finals } = setup();
+    src("本日の");
+    tick(300);
+    out("Chủ đề ");
+    src("議題です。");
+    tick(300);
+    expect(interim.at(-1)).toEqual({ text: "本日の議題です。", translation: "Chủ đề" });
+    src("次に");
+    out("hôm nay.");
+    expect(pairs()).toEqual([["本日の議題です。", "Chủ đề hôm nay."]]);
+    expect(finals[0].startMs).toBe(10_000);
+    tick(300);
+    src("予算を確認します。");
+    tick(300);
+    out("Tiếp theo xác nhận ngân sách.");
+    expect(pairs()).toEqual([
+      ["本日の議題です。", "Chủ đề hôm nay."],
+      ["次に予算を確認します。", "Tiếp theo xác nhận ngân sách."],
     ]);
-    expect(interim.at(-1)).toEqual({ text: "", translation: "" });
-    // The next sentence gets a new id.
-    send({ type: "session.output_transcript.delta", delta: "Tiếp theo", elapsed_ms: 5000 });
-    p.flushIdle(0);
-    expect(finals[1].itemId).not.toBe(finals[0].itemId);
-    expect(finals[1]).toMatchObject({ text: "", translation: "Tiếp theo" });
+    expect(finals[0].itemId).not.toBe(finals[1].itemId);
   });
 
-  it("waits longer when the translation is mid-sentence (interpreter trails the speaker)", () => {
-    const { p, finals, send, tick } = setup();
-    send({ type: "session.input_transcript.delta", delta: "Let's review the plan", elapsed_ms: 0 });
-    send({ type: "session.output_transcript.delta", delta: "Hãy cùng xem", elapsed_ms: 200 });
-    tick(1500);
-    p.flushIdle(1300);
+  it("waits for a source transcript that arrives after its translation (the reported bug)", () => {
+    const { src, out, tick, pairs } = setup();
+    out("まず、T1のパートを見ていきます。"); // translation first: the source is not there yet
+    tick(500);
+    expect(pairs()).toEqual([]);
+    src("Đầu tiên chúng ta xem phần của team 1.");
+    expect(pairs()).toEqual([["Đầu tiên chúng ta xem phần của team 1.", "まず、T1のパートを見ていきます。"]]);
+  });
+
+  it("never copies the translation into the source when the source never arrives", () => {
+    const { out, tick, finals } = setup();
+    out("Xin chào mọi người.");
+    tick(1300);
+    tick(1400);
+    expect(finals).toHaveLength(1);
+    expect(finals[0]).toMatchObject({ text: "", translation: "Xin chào mọi người." });
+  });
+
+  it("keeps a fast speaker's next sentence for the next translation", () => {
+    const { src, out, tick, pairs } = setup();
+    src("一つ目の文です。");
+    tick(200);
+    out("Đây là ");
+    tick(200);
+    src("二つ目の文です。"); // speaker is already one sentence ahead
+    tick(200);
+    out("câu thứ nhất.");
+    expect(pairs()).toEqual([["一つ目の文です。", "Đây là câu thứ nhất."]]);
+    out("Đây là câu thứ hai.");
+    expect(pairs().at(-1)).toEqual(["二つ目の文です。", "Đây là câu thứ hai."]);
+  });
+
+  it("keeps short source sentences the interpreter merged into one translation", () => {
+    const { src, out, tick, pairs } = setup();
+    src("はい。");
+    tick(300);
+    src("わかりました。");
+    tick(400);
+    out("Vâng, tôi hiểu rồi.");
+    expect(pairs()).toEqual([["はい。 わかりました。", "Vâng, tôi hiểu rồi."]]);
+  });
+
+  it("emits source sentences that get no translation (already in the target language)", () => {
+    const { src, tick, finals } = setup();
+    src("Vâng, tôi đồng ý");
+    tick(1600); // pause closes the unpunctuated sentence
     expect(finals).toHaveLength(0);
-    tick(1200);
-    p.flushIdle(1300);
+    tick(1400);
+    tick(1400);
     expect(finals).toHaveLength(1);
+    expect(finals[0]).toMatchObject({ text: "Vâng, tôi đồng ý", translation: "" });
   });
 
-  it("splits long speech at sentence ends and reports errors", () => {
-    const { p, finals, errors, send } = setup();
-    p.maxChars = 20;
-    send({ type: "session.output_transcript.delta", delta: "Câu thứ nhất khá là dài." });
-    expect(finals).toHaveLength(1);
-    send({ type: "session.output_transcript.delta", delta: "Câu hai" });
-    expect(finals).toHaveLength(1);
-    send({ type: "error", error: { message: "boom" } });
+  it("closes an unpunctuated translation after a pause and flushes everything on stop", () => {
+    const { p, src, out, tick, pairs } = setup();
+    src("確認お願いします");
+    out("Nhờ anh xác nhận giúp");
+    tick(1400); // the translation closed; its source closes a moment later
+    tick(300);
+    expect(pairs()).toEqual([["確認お願いします", "Nhờ anh xác nhận giúp"]]);
+    src("最後に");
+    out("Cuối cùng");
+    p.flushIdle(0);
+    expect(pairs().at(-1)).toEqual(["最後に", "Cuối cùng"]);
+  });
+
+  it("reports errors and ignores audio / malformed events", () => {
+    const { p, errors, finals } = setup();
+    p.handle(JSON.stringify({ type: "error", error: { message: "boom" } }));
+    p.handle(JSON.stringify({ type: "session.output_audio.delta", delta: "AAAA" }));
     p.handle("not json");
-    send({ type: "session.output_transcript.delta", delta: 42 });
+    p.handle(JSON.stringify({ type: "session.output_transcript.delta", delta: 42 }));
     expect(errors).toEqual(["boom"]);
+    expect(finals).toHaveLength(0);
   });
 });

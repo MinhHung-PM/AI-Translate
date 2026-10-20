@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Dialog, Field, Fred, Textarea, cn } from "@/components/ui";
 import { TranslationStatusBadge } from "@/components/shared/status";
 import { api } from "@/lib/api";
-import { errorMessage, formatMs } from "@/lib/format";
+import { errorMessage, formatMs, originalMissing } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Language, TranscriptEntry } from "@/lib/types";
 
@@ -97,9 +97,9 @@ export function TranscriptTable({ entries, target, editable, selected, onToggle,
                   {e.speaker_label ?? <span className="font-normal text-muted">{t.workspace.speakerUnknown}</span>}
                 </td>
                 <td className="hidden border-b border-line px-3 py-2.5 leading-normal text-muted md:table-cell">
-                  <p className="break-words whitespace-pre-wrap">{e.original_text}</p>
+                  <p className="break-words whitespace-pre-wrap">{originalMissing(e) ? <span className="italic text-subtle">{t.captions.noOriginal}</span> : e.original_text}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1">
-                    {e.source_language && <Badge>{e.source_language}</Badge>}
+                    {e.source_language && !originalMissing(e) && <Badge>{e.source_language}</Badge>}
                     {e.original_edited && <Badge tone="warning">{t.common.edit}</Badge>}
                     {e.source_metadata.is_demo === true && <Badge tone="warning">DEMO</Badge>}
                   </div>
@@ -113,7 +113,7 @@ export function TranscriptTable({ entries, target, editable, selected, onToggle,
                     <p className="text-subtle">{t.common.none}</p>
                   )}
                   {/* Narrow screens: the original moves under the translation. */}
-                  <p className="mt-1 text-xs text-muted md:hidden">{e.original_text}</p>
+                  <p className="mt-1 text-xs text-muted md:hidden">{originalMissing(e) ? t.captions.noOriginal : e.original_text}</p>
                   {!editable && tr?.ambiguity_note && (
                     <p className="mt-1 text-xs text-warning">
                       ⚠ {t.workspace.ambiguity}: {tr.ambiguity_note}
@@ -184,7 +184,7 @@ function LineEditor({ entry, target, onChanged, onRetranslate, onEditOriginal }:
         {t.workspace.line} #{entry.sequence}
         {entry.start_ms !== null && ` · ${formatMs(entry.start_ms)}`} · {entry.speaker_label ?? t.workspace.speakerUnknown}
       </span>
-      <p className="text-[15px] leading-relaxed break-words">{entry.original_text}</p>
+      <p className="text-[15px] leading-relaxed break-words">{originalMissing(entry) ? <span className="italic text-subtle">{t.captions.noOriginal}</span> : entry.original_text}</p>
       <label className="flex flex-col gap-1">
         <span className="text-xs text-muted">{t.workspace.manualTranslation}</span>
         <Textarea

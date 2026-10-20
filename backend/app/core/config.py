@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     # Server-wide AI keys (never sent to browsers). Used by everyone in "shared" mode, and as a
     # fallback for users without their own provider configuration otherwise.
     openai_api_key: str = ""
-    server_ai_model: str = "gpt-4.1-mini"  # translation + memo model with the server key
+    # Translation + memo model with the server key. gpt-4.1 translates Japanese ↔ Vietnamese clearly
+    # better than gpt-4.1-mini (about 5x the token price).
+    server_ai_model: str = "gpt-4.1"
     soniox_api_key: str = ""
     session_ttl_minutes: int = 8 * 60
     session_cookie_name: str = "memohub_session"

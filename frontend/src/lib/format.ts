@@ -69,3 +69,9 @@ function tzOffsetMinutes(date: Date, timeZone: string): number {
   const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
   return Math.round((asUtc - date.getTime()) / 60_000);
 }
+
+/** Live interpretation can return a translation whose source transcript never arrived: the
+ * server stores the translation as the text then, and the UI must not present it as the original. */
+export function originalMissing(e: { source_metadata?: Record<string, unknown> | null }): boolean {
+  return e.source_metadata?.original_missing === true;
+}

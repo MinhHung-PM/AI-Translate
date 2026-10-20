@@ -14,7 +14,7 @@ sự kiện `session.*`) và cookbook chính thức *"Build Live Translation App
 |---|---|
 | Cách chạy | Máy chủ cấp client secret tạm thời (`/v1/realtime/translations/client_secrets`, `session.audio.output.language` = ngôn ngữ đích của cuộc họp, `input.transcription.model = gpt-realtime-whisper` để có kèm lời gốc, `noise_reduction` theo cài đặt lọc tạp âm). Trình duyệt gửi SDP tới `https://api.openai.com/v1/realtime/translations/calls`; âm thanh đi thẳng trình duyệt → OpenAI |
 | Chữ hiện | **Bản dịch chạy từng chữ** ngay khi đang nói (`session.output_transcript.delta`), lời gốc chạy bên dưới (`session.input_transcript.delta`) |
-| Chốt câu | API không có sự kiện "completed": trình duyệt chốt bong bóng khi **ngừng có chữ mới 1,3 s** (bản dịch đã hết câu) hoặc 2,6 s (bản dịch chưa hết câu — người phiên dịch thường nói trễ hơn người nói); bong bóng dài > 160 ký tự được cắt ở dấu hết câu. Câu chốt được lưu kèm **bản dịch của OpenAI** (không dịch lại lần hai, không tốn token dịch) |
+| Chốt câu | API không có sự kiện "completed" và hai luồng chữ độc lập (bản dịch trễ hơn lời nói vài giây; lời gốc có thể về trước hoặc sau bản dịch). Trình duyệt tách **từng luồng** thành câu (dấu câu hoặc khoảng lặng), rồi **ghép mỗi câu dịch với câu gốc tương ứng** (câu gốc cũ nhất chưa ghép, gộp thêm các câu ngắn mà bộ phiên dịch đã nhập làm một), chờ tối đa ~2,6 s nếu lời gốc chưa về. Câu gốc không có bản dịch (đã là ngôn ngữ đích) được lưu riêng. Không bao giờ lấy bản dịch điền vào chỗ lời gốc: câu thiếu lời gốc hiện "(không nhận được lời gốc)". Câu được lưu kèm **bản dịch của OpenAI** (không dịch lại) |
 | Giọng đọc bản dịch | OpenAI trả cả âm thanh đã dịch; mặc định **tắt**, bật "Phát giọng đọc bản dịch" (nên đeo tai nghe để micro không thu lại) |
 | Ngôn ngữ đích hỗ trợ | es, pt, fr, **ja**, ru, zh, de, ko, hi, id, **vi**, it, **en**; đầu vào > 70 ngôn ngữ (tự nhận biết) |
 
@@ -109,8 +109,9 @@ Máy chủ
 Chọn trên màn hình thu âm: **Tắt / Tiêu chuẩn (mặc định) / Mạnh**. Áp dụng cho **mọi nguồn** (micro và âm
 thanh cuộc họp) ngay trong trình duyệt, *trước* khi nhận dạng — cả chế độ chữ chạy lẫn theo câu:
 
-Cổng ồn chạy cho **micro** ở mức Tiêu chuẩn; với **âm thanh cuộc họp / tab** chỉ chạy ở mức Mạnh (Teams, Zoom,
-YouTube đã tự lọc ồn — chặn thêm có thể nuốt chữ khi nói nhỏ hoặc có nhạc nền).
+**Tiêu chuẩn** chỉ lọc nhẹ: bộ lọc tạp âm của trình duyệt (micro) + lọc tiếng ù 90 Hz. Cổng chặn tiếng nhỏ,
+lọc xì 7,5 kHz và lọc ồn phía nhà cung cấp (`noise_reduction` của OpenAI) **chỉ bật ở mức Mạnh**: chồng nhiều
+lớp lọc làm mất âm cuối và thanh điệu — tiếng Việt bị ảnh hưởng nhiều nhất (đo thực tế với người dùng, 2026-10).
 
 1. Lọc thông cao 90 Hz: tiếng ù của quạt, điều hòa, rung bàn.
 2. Lọc thông thấp 7,5 kHz: tiếng xì (giọng nói nằm chủ yếu dưới ~7 kHz).

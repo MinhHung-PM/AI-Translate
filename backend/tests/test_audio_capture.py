@@ -475,11 +475,9 @@ def test_streaming_token_is_ephemeral_and_configured(pm, realtime, caplog):
     assert session["type"] == "transcription"
     tr = session["audio"]["input"]["transcription"]
     assert tr == {"model": "gpt-realtime-whisper", "delay": "low"}  # no prompt/VAD per spec; 2 languages → auto
-    assert session["audio"]["input"]["noise_reduction"] == {"type": "near_field"}
+    # "standard" noise suppression: no provider-side reduction on top of the browser's (keeps soft syllables).
+    assert session["audio"]["input"]["noise_reduction"] is None
     assert session["audio"]["input"]["turn_detection"] is None
-    # Meeting audio uses far-field noise reduction.
-    pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "meeting"})
-    assert realtime.bodies[1]["session"]["audio"]["input"]["noise_reduction"] == {"type": "far_field"}
 
 
 def test_streaming_latency_modes(pm, realtime):
@@ -654,6 +652,8 @@ def test_noise_suppression_setting_drives_openai_noise_reduction(pm, realtime):
     sid2 = start(pm, meeting["id"], noise_suppression="strong")["session"]["id"]
     pm.post(f"/audio-sessions/{sid2}/realtime-token", json={"source_id": "meeting"})
     assert realtime.bodies[-1]["session"]["audio"]["input"]["noise_reduction"] == {"type": "far_field"}
+    pm.post(f"/audio-sessions/{sid2}/realtime-token", json={"source_id": "mic"})
+    assert realtime.bodies[-1]["session"]["audio"]["input"]["noise_reduction"] == {"type": "near_field"}
     bad = pm.post(
         f"/meetings/{meeting['id']}/audio-sessions",
         json={
@@ -681,7 +681,7 @@ def test_interpret_mode_streams_openai_translation_and_stores_it(pm, db, realtim
     assert body["session"] == {
         "model": "gpt-realtime-translate",
         "audio": {
-            "input": {"transcription": {"model": "gpt-realtime-whisper"}, "noise_reduction": {"type": "far_field"}},
+            "input": {"transcription": {"model": "gpt-realtime-whisper"}, "noise_reduction": None},
             "output": {"language": "vi"},
         },
     }
