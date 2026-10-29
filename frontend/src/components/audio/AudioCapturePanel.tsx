@@ -368,7 +368,9 @@ export function AudioCapturePanel({
     rt =
       provider === "soniox"
         ? new SonioxCaptionSource(cap, getToken, handlers, clock, onState, latency === "interpret")
-        : new RealtimeCaptionSource(stream, getToken, handlers, clock, onState);
+        : new RealtimeCaptionSource(stream, getToken, handlers, clock, onState, () =>
+            api.post<RealtimeToken>(`/audio-sessions/${sid}/realtime-token`, { source_id: p.id, purpose: "source" }),
+          );
     if (playVoice) {
       rt.onRemoteAudio = (remote) => {
         const el = voices.current.get(p.id) ?? new Audio();

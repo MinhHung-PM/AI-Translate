@@ -191,67 +191,88 @@ test("Live interpretation: translated words stream in with the original, sentenc
     body.session.is_demo = false;
     await route.fulfill({ response: res, json: body });
   });
-  await page.route(/realtime-token$/, (route) =>
-    route.fulfill({
-      json: {
-        client_secret: "ek_tr_fake",
-        expires_at: 0,
-        model: "gpt-realtime-translate",
-        client_commits: false,
-        kind: "translation",
-        target_language: "vi",
-        calls_url: "https://api.openai.com/v1/realtime/translations/calls",
-      },
-    }),
-  );
+  const tokenPurposes: string[] = [];
+  await page.route(/realtime-token$/, (route) => {
+    const purpose = JSON.parse(route.request().postData() ?? "{}").purpose ?? "default";
+    tokenPurposes.push(purpose);
+    return route.fulfill({
+      json:
+        purpose === "source"
+          ? // Companion transcription session: the original words (audit trail).
+            { client_secret: "ek_src_fake", expires_at: 0, model: "gpt-realtime-whisper", client_commits: true, kind: "transcription", calls_url: "https://api.openai.com/v1/realtime/calls" }
+          : {
+              client_secret: "ek_tr_fake",
+              expires_at: 0,
+              model: "gpt-realtime-translate",
+              client_commits: false,
+              kind: "translation",
+              target_language: "vi",
+              calls_url: "https://api.openai.com/v1/realtime/translations/calls",
+            },
+    });
+  });
   await page.route(/\/segments$/, async (route) => {
     segments.push(JSON.parse(route.request().postData() ?? "{}"));
     await route.fulfill({ json: { entries: [], duplicate: false, note: null } });
   });
+  // A fake OpenAI peer per connection: answers the WebRTC offer, then plays a script on "oai-events".
+  const fakePeer = (script: [number, object][]) =>
+    async (route: import("@playwright/test").Route) => {
+      const offer = route.request().postData() ?? "";
+      const answer = await peer.evaluate(
+        async ({ sdp, script }) => {
+          const pc = new RTCPeerConnection();
+          ((window as unknown as { pcs: RTCPeerConnection[] }).pcs ??= []).push(pc);
+          pc.ondatachannel = (ev) => {
+            const dc = ev.channel;
+            let scripted = false;
+            dc.onopen = async () => {
+              if (scripted) return;
+              scripted = true;
+              await new Promise((r) => setTimeout(r, 500));
+              for (const [delay, event] of script) {
+                await new Promise((r) => setTimeout(r, delay));
+                dc.send(JSON.stringify(event));
+              }
+            };
+          };
+          await pc.setRemoteDescription({ type: "offer", sdp });
+          await pc.setLocalDescription(await pc.createAnswer());
+          await new Promise<void>((r) => {
+            if (pc.iceGatheringState === "complete") return r();
+            pc.onicegatheringstatechange = () => pc.iceGatheringState === "complete" && r();
+            setTimeout(r, 3000);
+          });
+          return pc.localDescription!.sdp;
+        },
+        { sdp: offer, script },
+      );
+      await route.fulfill({ status: 201, contentType: "application/sdp", body: answer });
+    };
   let auth = "";
+  let sourceAuth = "";
+  // Interpretation: translated words only — its own (unreliable) source transcript must be ignored.
+  const interpret = fakePeer([
+    [0, { type: "session.created", session: {} }],
+    [400, { type: "session.output_transcript.delta", delta: "Xin chào ", elapsed_ms: 400 }],
+    [0, { type: "session.input_transcript.delta", delta: "RÁC-KHÔNG-DÙNG", elapsed_ms: 400 }],
+    [800, { type: "session.output_transcript.delta", delta: "mọi người", elapsed_ms: 1200 }],
+    [400, { type: "session.output_transcript.delta", delta: ".", elapsed_ms: 1600 }],
+  ]);
   await page.route("https://api.openai.com/v1/realtime/translations/calls", async (route) => {
     auth = route.request().headers()["authorization"] ?? "";
-    const offer = route.request().postData() ?? "";
-    const answer = await peer.evaluate(async (sdp) => {
-      const pc = new RTCPeerConnection();
-      (window as unknown as { pc: RTCPeerConnection }).pc = pc;
-      pc.ondatachannel = (ev) => {
-        const dc = ev.channel;
-        const send = (o: object) => dc.send(JSON.stringify(o));
-        // Like gpt-realtime-translate: append-only source + translated deltas, no "completed".
-        let scripted = false;
-        dc.onopen = async () => {
-          if (scripted) return;
-          scripted = true;
-          await new Promise((r) => setTimeout(r, 500));
-          const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-          send({ type: "session.created", session: {} });
-          const script: [string, string][] = [
-            ["session.input_transcript.delta", "皆さん、"],
-            ["session.output_transcript.delta", "Xin chào "],
-            ["session.input_transcript.delta", "こんにちは。"],
-            ["session.output_transcript.delta", "mọi người"],
-            ["session.output_transcript.delta", "."],
-          ];
-          let elapsed = 0;
-          for (const [type, delta] of script) {
-            elapsed += 200;
-            send({ type, delta, elapsed_ms: elapsed });
-            await wait(400);
-          }
-        };
-      };
-      await pc.setRemoteDescription({ type: "offer", sdp });
-      const ans = await pc.createAnswer();
-      await pc.setLocalDescription(ans);
-      await new Promise<void>((r) => {
-        if (pc.iceGatheringState === "complete") return r();
-        pc.onicegatheringstatechange = () => pc.iceGatheringState === "complete" && r();
-        setTimeout(r, 3000);
-      });
-      return pc.localDescription!.sdp;
-    }, offer);
-    await route.fulfill({ status: 201, contentType: "application/sdp", body: answer });
+    await interpret(route);
+  });
+  // Companion transcription (gpt-realtime-whisper style): the original words, finalized a little later.
+  const source = fakePeer([
+    [200, { type: "conversation.item.input_audio_transcription.delta", delta: "皆さん、" }],
+    [600, { type: "conversation.item.input_audio_transcription.delta", delta: "こんにちは。" }],
+    [1200, { type: "input_audio_buffer.committed", item_id: "src_1" }],
+    [0, { type: "conversation.item.input_audio_transcription.completed", item_id: "src_1", transcript: "皆さん、こんにちは。" }],
+  ]);
+  await page.route("https://api.openai.com/v1/realtime/calls", async (route) => {
+    sourceAuth = route.request().headers()["authorization"] ?? "";
+    await source(route);
   });
 
   await tid(page, "unlock-mics").click();
@@ -271,6 +292,8 @@ test("Live interpretation: translated words stream in with the original, sentenc
   await expect.poll(() => segments.length, { timeout: 20_000 }).toBe(1);
   expect(sessionBodies[0]).toMatchObject({ mode: "interpret", caption_latency: "balanced", language_detection: "auto" });
   expect(auth).toBe("Bearer ek_tr_fake");
+  expect(sourceAuth).toBe("Bearer ek_src_fake");
+  expect(tokenPurposes).toEqual(expect.arrayContaining(["default", "source"]));
   expect(segments[0]).toMatchObject({
     text: "皆さん、こんにちは。",
     translated_text: "Xin chào mọi người.",

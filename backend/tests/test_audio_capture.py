@@ -681,10 +681,16 @@ def test_interpret_mode_streams_openai_translation_and_stores_it(pm, db, realtim
     assert body["session"] == {
         "model": "gpt-realtime-translate",
         "audio": {
-            "input": {"transcription": {"model": "gpt-realtime-whisper"}, "noise_reduction": None},
+            "input": {"transcription": None, "noise_reduction": None},
             "output": {"language": "vi"},
         },
     }
+    # The original words come from a companion transcription session (audit trail).
+    src = pm.post(f"/audio-sessions/{sid}/realtime-token", json={"source_id": "meeting", "purpose": "source"})
+    assert src.status_code == 200, src.text
+    assert src.json()["kind"] == "transcription" and src.json()["model"] == "gpt-realtime-whisper"
+    assert src.json()["calls_url"] == "https://api.openai.com/v1/realtime/calls"
+    assert realtime.bodies[-1]["session"]["type"] == "transcription"
     seg = {
         "source_id": "meeting",
         "item_id": "tr-1",

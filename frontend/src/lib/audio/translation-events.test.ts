@@ -114,6 +114,26 @@ describe("TranslationEventProcessor", () => {
     expect(pairs().at(-1)).toEqual(["最後に", "Cuối cùng"]);
   });
 
+  it("takes the original words from the companion transcription session (audit trail)", () => {
+    const { p, src, out, tick, pairs, interim } = setup();
+    p.externalSource = true;
+    src("ignored: the interpreter's own source transcript");
+    p.setSourceInterim("Đầu tiên chúng ta");
+    out("まず、");
+    expect(interim.at(-1)).toEqual({ text: "Đầu tiên chúng ta", translation: "まず、" });
+    out("チーム1のパートを見ていきます。"); // translation done before the source sentence is final
+    tick(400);
+    expect(pairs()).toEqual([]);
+    p.addSource("Đầu tiên chúng ta xem phần của team 1.", 10_100);
+    expect(pairs()).toEqual([["Đầu tiên chúng ta xem phần của team 1.", "まず、チーム1のパートを見ていきます。"]]);
+    p.addSource("Vâng.", 12_000); // same-language reply: no translation comes
+    tick(1300);
+    tick(1300);
+    tick(1300);
+    tick(1300);
+    expect(pairs().at(-1)).toEqual(["Vâng.", ""]);
+  });
+
   it("reports errors and ignores audio / malformed events", () => {
     const { p, errors, finals } = setup();
     p.handle(JSON.stringify({ type: "error", error: { message: "boom" } }));

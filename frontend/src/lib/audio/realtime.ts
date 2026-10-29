@@ -33,8 +33,11 @@ export class RealtimeCaptionSource {
   private stopped = false;
   private attempts = 0;
   private readonly captions: RealtimeEventProcessor;
+  private readonly handlers: RealtimeHandlers;
   private readonly interpreter: TranslationEventProcessor;
   private interpreting = false;
+  /** Interpret mode: a transcription session recording the original words (audit trail). */
+  private companion: RealtimeCaptionSource | null = null;
   model = "";
   /** Live interpretation also returns translated speech; set to play it. */
   onRemoteAudio: ((stream: MediaStream) => void) | null = null;
@@ -45,7 +48,10 @@ export class RealtimeCaptionSource {
     handlers: RealtimeHandlers,
     private readonly clock: () => number,
     private readonly onState: (s: CaptionState, reconnects: number) => void,
+    /** Token for the companion transcription session (interpret mode). */
+    private readonly getSourceToken: (() => Promise<RealtimeToken>) | null = null,
   ) {
+    this.handlers = handlers;
     this.captions = new RealtimeEventProcessor(handlers);
     this.captions.now = clock;
     this.interpreter = new TranslationEventProcessor(handlers);
@@ -78,6 +84,8 @@ export class RealtimeCaptionSource {
     this.model = token.model;
     this.clientCommits = !!token.client_commits;
     this.interpreting = token.kind === "translation";
+    if (this.interpreting) await this.startCompanion();
+    if (this.stopped) return;
     const pc = new RTCPeerConnection();
     this.pc = pc;
     for (const track of this.stream.getAudioTracks()) pc.addTrack(track, this.stream);
@@ -123,8 +131,38 @@ export class RealtimeCaptionSource {
     await pc.setRemoteDescription({ type: "answer", sdp: answer });
   }
 
+  /**
+   * The interpreter's own source transcript is optional and did not arrive reliably, so the original
+   * words come from a second, transcription-only session on the same audio, paired with the
+   * translations by the interpreter's processor. If it cannot start, the interpreter's own source
+   * transcript is used (when the server enables it).
+   */
+  private async startCompanion(): Promise<void> {
+    if (this.companion || !this.getSourceToken) return;
+    const companion = new RealtimeCaptionSource(
+      this.stream,
+      this.getSourceToken,
+      {
+        onInterim: (_id, text) => this.interpreter.setSourceInterim(text),
+        onFinal: (u) => this.interpreter.addSource(u.text, u.startMs),
+        onError: (m) => this.handlers.onError(m),
+      },
+      this.clock,
+      () => undefined,
+    );
+    try {
+      await companion.start();
+      this.companion = companion;
+      this.interpreter.externalSource = true;
+    } catch (err) {
+      void companion.stop();
+      this.handlers.onError(`Original-words transcription unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   /** End of an utterance detected locally (pause or 12 s cap): ask OpenAI to finalize it. */
   commit(): void {
+    this.companion?.commit();
     if (!this.clientCommits || this.dc?.readyState !== "open") return;
     this.dc.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
   }
@@ -153,6 +191,8 @@ export class RealtimeCaptionSource {
    */
   async stop(): Promise<void> {
     if (this.stopped) return;
+    // The original words first: their last sentence must be there to pair with the last translation.
+    await this.companion?.stop();
     this.commit();
     this.stopped = true;
     if (this.dc?.readyState === "open") {

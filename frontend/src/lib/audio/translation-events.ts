@@ -37,6 +37,10 @@ export class TranslationEventProcessor {
   private lastOutAt = 0;
   private seq = 0;
   private liveId = "";
+  /** Source words from a separate transcription session (see addSource): the interpreter's own,
+   * unreliable source transcript is then ignored. */
+  externalSource = false;
+  private sourceInterim = "";
   /** Capture-clock time (ms) at which this connection's audio started. */
   baseMs = 0;
   now: () => number = () => this.baseMs;
@@ -56,6 +60,7 @@ export class TranslationEventProcessor {
     }
     const input = ev.type === "session.input_transcript.delta";
     if (!input && ev.type !== "session.output_transcript.delta") return;
+    if (input && this.externalSource) return;
     if (typeof ev.delta !== "string" || !ev.delta) return;
     const now = this.now();
     if (input) {
@@ -90,6 +95,22 @@ export class TranslationEventProcessor {
     while (this.inDone.length && quiet && (force || now - this.inDone[0].endAt >= idleMs * 3)) {
       this.emit([this.inDone.shift()!], null);
     }
+    this.emitInterim();
+  }
+
+  /** A finished source sentence from the companion transcription session (the original words). */
+  addSource(text: string, startAt: number): void {
+    if (!text.trim()) return;
+    this.closeInput();
+    this.inDone.push({ text, startAt, endAt: this.now() });
+    this.sourceInterim = "";
+    if (this.outWaiting) this.pairWaiting(false);
+    this.emitInterim();
+  }
+
+  /** Words of the source sentence being spoken (companion session), for the live line. */
+  setSourceInterim(text: string): void {
+    this.sourceInterim = text;
     this.emitInterim();
   }
 
@@ -141,7 +162,7 @@ export class TranslationEventProcessor {
 
   /** One live line per source: unpaired source words + the translation being spoken. */
   private emitInterim(): void {
-    const original = [...this.inDone.map((s) => s.text), this.inCur?.text ?? ""].join(" ").replace(/\s+/g, " ").trim();
+    const original = [...this.inDone.map((s) => s.text), this.inCur?.text ?? "", this.sourceInterim].join(" ").replace(/\s+/g, " ").trim();
     const translation = [this.outWaiting?.text ?? "", this.outCur?.text ?? ""].join(" ").replace(/\s+/g, " ").trim();
     if (original || translation) {
       this.liveId ||= `tr-live-${Math.round(this.baseMs)}`;

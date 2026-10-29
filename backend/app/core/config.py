@@ -108,7 +108,9 @@ class Settings(BaseSettings):
     stt_realtime_token_ttl_seconds: int = 600
     # Live interpretation (OpenAI translates speech directly; words stream in the target language).
     stt_interpret_model: str = "gpt-realtime-translate"
-    stt_interpret_input_transcription_model: str = "gpt-realtime-whisper"  # source-language captions
+    # The interpreter's own source transcript (empty = off). The original words come from a separate
+    # transcription session instead (realtime-token purpose "source"), which delivers them reliably.
+    stt_interpret_input_transcription_model: str = ""
     # Soniox (alternative speech provider; key stored per user in AI Settings).
     soniox_model: str = "stt-rt-v5"
     soniox_max_session_seconds: int = 4 * 3600

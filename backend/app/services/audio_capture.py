@@ -631,7 +631,11 @@ def realtime_token(
     user_id: uuid.UUID,
     session_id: uuid.UUID | None,
     source_id: str,
+    purpose: str = "default",
 ) -> Any:
+    """``purpose="source"`` (interpret mode): a transcription session that records the speaker's own
+    words for the transcript, alongside the interpretation session (whose optional source transcript
+    proved unreliable — originals must be kept for audit)."""
     from app.audio.realtime import create_transcription_token, create_translation_token
 
     settings = get_settings()
@@ -654,7 +658,7 @@ def realtime_token(
         else ("near_field" if source.get("kind") == "microphone" else "far_field")
     )
     try:
-        if config.get("mode") == "interpret":
+        if config.get("mode") == "interpret" and purpose != "source":
             return _issue(
                 db,
                 live,

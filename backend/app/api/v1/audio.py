@@ -55,6 +55,8 @@ class ChunkOut(BaseModel):
 
 class RealtimeTokenIn(BaseModel):
     source_id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
+    # "source": in interpret mode, a transcription session for the original words (audit trail).
+    purpose: Literal["default", "source"] = "default"
 
 
 class RealtimeTokenOut(BaseModel):
@@ -185,7 +187,13 @@ def create_realtime_token(session_id: uuid.UUID, body: RealtimeTokenIn, auth: Au
     if live.created_by_id != auth.user.id:
         raise Forbidden("Only the user who started the capture can stream audio to it")
     token = audio.realtime_token(
-        db, live=live, meeting=meeting, user_id=auth.user.id, session_id=auth.session.id, source_id=body.source_id
+        db,
+        live=live,
+        meeting=meeting,
+        user_id=auth.user.id,
+        session_id=auth.session.id,
+        source_id=body.source_id,
+        purpose=body.purpose,
     )
     if isinstance(token, SonioxToken):
         return RealtimeTokenOut(
