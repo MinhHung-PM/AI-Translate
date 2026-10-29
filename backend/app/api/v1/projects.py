@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import DB, Auth
+from app.core.config import get_settings
 from app.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
 from app.db.base import utcnow
 from app.models import Division, GlossaryEntry, Project, ProjectMembership, User
@@ -146,6 +147,13 @@ def delete_project(project_id: uuid.UUID, auth: Auth, db: DB) -> None:
 # ---- Members ------------------------------------------------------------------
 
 
+def _members_managed() -> None:
+    # Shared team site: everyone is the one team account, so there is nobody to add, and
+    # removing that account would lock every visitor out of the project.
+    if get_settings().auth_mode == "shared":
+        raise Forbidden("Project members are not used on the shared team site (no individual accounts)")
+
+
 @router.get("/{project_id}/members", response_model=list[MemberOut])
 def list_members(project_id: uuid.UUID, auth: Auth, db: DB) -> list[MemberOut]:
     load_project(db, auth.user, project_id, AccessLevel.metadata)
@@ -160,6 +168,7 @@ def list_members(project_id: uuid.UUID, auth: Auth, db: DB) -> list[MemberOut]:
 
 @router.post("/{project_id}/members", response_model=MemberOut, status_code=201)
 def add_member(project_id: uuid.UUID, body: MemberIn, auth: Auth, db: DB) -> MemberOut:
+    _members_managed()
     project, access = load_project(db, auth.user, project_id, AccessLevel.metadata)
     _require_manage_or_admin(access)
     user = (
@@ -195,6 +204,7 @@ def add_member(project_id: uuid.UUID, body: MemberIn, auth: Auth, db: DB) -> Mem
 
 @router.delete("/{project_id}/members/{user_id}", status_code=204)
 def remove_member(project_id: uuid.UUID, user_id: uuid.UUID, auth: Auth, db: DB) -> None:
+    _members_managed()
     project, access = load_project(db, auth.user, project_id, AccessLevel.metadata)
     _require_manage_or_admin(access)
     membership = db.scalar(

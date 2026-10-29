@@ -12,11 +12,13 @@ import { api, downloadFile } from "@/lib/api";
 import { errorMessage } from "@/lib/format";
 import { useApi, useJob } from "@/lib/hooks";
 import { t } from "@/lib/i18n";
+import { useFeature } from "@/lib/session";
 import type { Job, Language, Page, TranscriptEntry, TranslationStats, TranslationStatus } from "@/lib/types";
 
 const PAGE_SIZE = 200;
 
 export default function TranscriptWorkspacePage() {
+  const integrations = useFeature("integrations");
   const router = useRouter();
   const searchParams = useSearchParams();
   const highlight = searchParams.get("entry");
@@ -104,7 +106,7 @@ export default function TranscriptWorkspacePage() {
 
       {canView && (
         <div className="flex flex-col gap-4">
-          {(editable || meeting.platform !== "manual_import") && (
+          {integrations && (editable || meeting.platform !== "manual_import") && (
             <Card title={t.source.title}>
               <MeetingSourceSelector meetingId={id} editable={editable} platform={meeting.platform} onImported={refreshAll} />
             </Card>

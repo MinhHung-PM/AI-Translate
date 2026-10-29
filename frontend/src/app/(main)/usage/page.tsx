@@ -7,6 +7,7 @@ import { ProjectFilter } from "@/components/shared/project-select";
 import { errorMessage, formatUsd } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import { t } from "@/lib/i18n";
+import { useFeature } from "@/lib/session";
 import type { UsageSummary } from "@/lib/types";
 
 function Bar({ value, max }: { value: number; max: number }) {
@@ -19,6 +20,7 @@ function Bar({ value, max }: { value: number; max: number }) {
 }
 
 export default function UsagePage() {
+  const shared = useFeature("shared_mode");
   const [projectId, setProjectId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -43,7 +45,7 @@ export default function UsagePage() {
       {data && (
         <div className="space-y-4">
           <Alert tone="info">
-            {t.usage.byokNote} {data.cost_note}
+            {shared ? t.usage.sharedNote : `${t.usage.byokNote} ${data.cost_note}`}
           </Alert>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             <Stat label={t.usage.totalRequests} value={data.total_requests} />

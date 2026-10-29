@@ -19,6 +19,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import AppError, Forbidden, NotAuthenticated, NotFound
 from app.core.security import new_token, pkce_challenge
 from app.db.base import utcnow
+from app.integrations.registry import all_connectors
 from app.models import OidcLoginState, Project, ProjectMembership, User
 from app.models.enums import GlobalRole, ProjectRole
 from app.schemas.api import DevLoginIn, DevUserOut, SessionInfo, UserOut
@@ -53,6 +54,11 @@ def _features() -> dict[str, bool]:
         "shared_mode": s.auth_mode == "shared",
         "server_openai": bool(s.openai_api_key),
         "server_soniox": bool(s.soniox_api_key),
+        # At least one meeting platform (Teams / Zoom / Meet) is configured on this server;
+        # otherwise the integration pages and links are hidden (nothing there could work).
+        "integrations": any(c.is_configured() for c in all_connectors()),
+        # The transcript replay demo is for trying the product, not for production sites.
+        "replay_demo": s.environment != "production",
     }
 
 

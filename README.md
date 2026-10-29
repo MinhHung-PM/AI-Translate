@@ -79,6 +79,8 @@ chỉ giới hạn số lượt mỗi phút, không giới hạn tiền. Màn h�
 - **Chưa kiểm chứng với tài khoản thật**: tích hợp Teams / Zoom / Google Meet qua OAuth (mới thử với máy
   chủ giả lập, hiển thị nhãn **SANDBOX**; Teams cần quản trị viên tenant cấp quyền). Cách thu âm trên
   trình duyệt dùng được với mọi nền tảng họp mà không cần tích hợp.
+- Tính năng không dùng được trên một site sẽ tự ẩn: trang Tích hợp khi chưa cấu hình nền tảng nào; thành
+  viên dự án và Cài đặt AI trên site không đăng nhập; Phát lại (Demo) ở chế độ production.
 - Thu âm cần **Chrome / Edge** trên máy tính; Safari / Firefox có thể không chia sẻ được âm thanh tab.
 - Một máy chủ, một database PostgreSQL: hãy sao lưu định kỳ (`.\start-lan.cmd backup`).
 

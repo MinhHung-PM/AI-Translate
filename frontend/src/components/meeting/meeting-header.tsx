@@ -6,16 +6,20 @@ import { Badge, cn } from "@/components/ui";
 import { MeetingStatusBadge, MemoStatusBadge } from "@/components/shared/status";
 import { formatDateTime } from "@/lib/format";
 import { t } from "@/lib/i18n";
+import { useFeature } from "@/lib/session";
 import type { Meeting } from "@/lib/types";
 
 /** Meeting title block with the Transcript / Biên bản / Trực tiếp switch. */
 export function MeetingHeader({ meeting, eyebrow }: { meeting: Meeting; eyebrow?: string }) {
   const pathname = usePathname();
+  // Platform warnings only matter when a platform integration exists on this server.
+  const platformWarning = useFeature("integrations") && meeting.platform_status !== "available";
+  const replayDemo = useFeature("replay_demo");
   const base = `/meetings/${meeting.id}`;
   const tabs = [
     { href: base, label: t.workspace.tabs.transcript },
     { href: `${base}/memo`, label: t.workspace.tabs.memo },
-    { href: `${base}/live`, label: t.workspace.tabs.live },
+    { href: `${base}/live`, label: replayDemo ? t.workspace.tabs.live : t.workspace.tabs.liveOnly },
   ];
   const src = meeting.source_language ?? meeting.detected_language;
   return (
@@ -40,9 +44,9 @@ export function MeetingHeader({ meeting, eyebrow }: { meeting: Meeting; eyebrow?
           </span>
           <MeetingStatusBadge status={meeting.status} />
           <MemoStatusBadge status={meeting.memo_status} />
-          <Badge tone={meeting.platform_status === "available" ? "neutral" : "warning"} title={meeting.platform_status === "available" ? undefined : meeting.platform_status === "not_linked" ? t.platform.notLinkedHint : t.platform.notConfiguredHint}>
+          <Badge tone={platformWarning ? "warning" : "neutral"} title={platformWarning ? (meeting.platform_status === "not_linked" ? t.platform.notLinkedHint : t.platform.notConfiguredHint) : undefined}>
             {t.platform[meeting.platform]}
-            {meeting.platform_status !== "available" && ` · ${meeting.platform_status === "not_linked" ? t.platform.not_linked : t.platform.not_configured}`}
+            {platformWarning && ` · ${meeting.platform_status === "not_linked" ? t.platform.not_linked : t.platform.not_configured}`}
           </Badge>
         </div>
       </div>

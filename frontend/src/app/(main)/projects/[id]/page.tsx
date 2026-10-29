@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import { t } from "@/lib/i18n";
+import { useFeature } from "@/lib/session";
 import type { GlossaryEntry, Language, Member, Project, ProjectRole } from "@/lib/types";
 
 const LANGS: Language[] = ["ja", "vi", "en"];
@@ -26,7 +27,9 @@ function LangSelect({ value, onChange, id, disabled }: { value: Language; onChan
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const project = useApi<Project>(`/projects/${id}`);
-  const members = useApi<Member[]>(`/projects/${id}/members`);
+  // Shared team site: one team account, no individual members to manage.
+  const shared = useFeature("shared_mode");
+  const members = useApi<Member[]>(shared ? null : `/projects/${id}/members`);
   const glossary = useApi<GlossaryEntry[]>(project.data?.permissions.view_summary ? `/projects/${id}/glossary` : null);
   const [edits, setEdits] = useState<Partial<Project>>({});
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -114,6 +117,7 @@ export default function ProjectDetailPage() {
           )}
         </Card>
 
+        {!shared && (
         <Card title={`${t.projects.members} (${members.data?.length ?? 0})`}>
           <Table>
             <tbody>
@@ -159,6 +163,7 @@ export default function ProjectDetailPage() {
             </div>
           )}
         </Card>
+        )}
 
         <Card title={t.projects.glossary} className="xl:col-span-2">
           <Table>

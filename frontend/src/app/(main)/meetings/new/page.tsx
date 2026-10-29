@@ -12,6 +12,7 @@ import { errorMessage, zonedLocalToIso } from "@/lib/format";
 import { parseParticipants } from "@/lib/participants";
 import { useApi } from "@/lib/hooks";
 import { t } from "@/lib/i18n";
+import { useFeature } from "@/lib/session";
 import type { ConnectorStatus, Meeting, MeetingPlatform } from "@/lib/types";
 
 const LANGS = ["ja", "vi", "en"] as const;
@@ -69,7 +70,8 @@ export default function NewMeetingPage() {
   });
   const projectId = useWatch({ control, name: "project_id" });
   const platform = useWatch({ control, name: "platform" }) as MeetingPlatform;
-  const connector = connectors?.find((c) => c.key === platform);
+  const integrations = useFeature("integrations");
+  const connector = integrations ? connectors?.find((c) => c.key === platform) : undefined;
 
   // Apply project language defaults when a project is chosen.
   useEffect(() => {
@@ -233,7 +235,7 @@ export default function NewMeetingPage() {
                   </Badge>
                 </div>
               )}
-              {platform !== "manual_import" && <Alert tone="warning">{t.platform.notConfiguredHint}</Alert>}
+              {integrations && platform !== "manual_import" && connector?.state === "not_configured" && <Alert tone="warning">{t.platform.notConfiguredHint}</Alert>}
               <Field label={t.meetingForm.url} error={errors.meeting_url?.message}>
                 {(id) => <Input id={id} type="url" {...register("meeting_url")} placeholder="https://" />}
               </Field>

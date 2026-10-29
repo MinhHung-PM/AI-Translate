@@ -174,7 +174,7 @@ export const vi = {
     noProjects: "Bạn chưa là thành viên của dự án nào. Hãy liên hệ quản lý dự án.",
   },
   workspace: {
-    tabs: { transcript: "Transcript", memo: "Biên bản", live: "Trực tiếp / Phát lại" },
+    tabs: { transcript: "Transcript", memo: "Biên bản", live: "Trực tiếp / Phát lại", liveOnly: "Trực tiếp" },
     sections: "Phần của cuộc họp",
     time: "Thời gian",
     speaker: "Người nói",
@@ -427,6 +427,7 @@ export const vi = {
     requests: "Lượt",
     cost: "Chi phí (USD)",
     empty: "Chưa có dữ liệu sử dụng.",
+    sharedNote: "Số liệu ước tính của ứng dụng cho site dùng chung (tính theo bảng giá cấu hình). Chi phí thực tế xem trên trang quản lý tài khoản OpenAI / Soniox của quản trị viên.",
     byokNote: "Đây là số liệu xử lý của ứng dụng. Với khóa API cá nhân (BYOK), hóa đơn thực tế nằm ở tài khoản nhà cung cấp và có thể khác.",
   },
   admin: {

@@ -61,6 +61,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   return <SessionContext.Provider value={{ session, loading, refresh, logout, setSession }}>{children}</SessionContext.Provider>;
 }
 
+/** A server feature flag from /auth/me (false while the session loads). */
+export function useFeature(name: string): boolean {
+  return !!useSession().session?.features[name];
+}
+
 export function useSession(): SessionContextValue {
   const ctx = useContext(SessionContext);
   if (!ctx) throw new Error("useSession must be used within SessionProvider");

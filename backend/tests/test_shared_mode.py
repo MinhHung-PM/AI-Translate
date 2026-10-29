@@ -109,3 +109,43 @@ def test_other_modes_still_require_sign_in(pm):
     from app.main import app
 
     assert TestClient(app).get("/api/v1/auth/me").status_code == 401
+
+
+def test_features_that_cannot_work_on_the_shared_site_are_off(shared, monkeypatch):
+    me = _me(shared)
+    assert me["features"]["integrations"] is False  # no Teams / Zoom / Meet app configured
+    h = {"X-CSRF-Token": me["csrf_token"]}
+    project = shared.get("/api/v1/projects").json()["items"][0]
+
+    # Nobody to add, and removing the team account would lock every visitor out.
+    assert (
+        shared.post(f"/api/v1/projects/{project['id']}/members", headers=h, json={"email": "x@example.com"}).status_code
+        == 403
+    )
+    r = shared.delete(f"/api/v1/projects/{project['id']}/members/{me['user']['id']}", headers=h)
+    assert r.status_code == 403
+    assert len(shared.get(f"/api/v1/projects/{project['id']}/members").json()) == 1
+
+    # The replay demo is for trying the product, not for production sites.
+    assert me["features"]["replay_demo"] is True
+    meeting = shared.post(
+        "/api/v1/meetings",
+        headers=h,
+        json={
+            "project_id": project["id"],
+            "title": "Họp",
+            "scheduled_at": "2026-10-29T10:00:00+09:00",
+            "target_language": "vi",
+        },
+    )
+    assert meeting.status_code == 201, meeting.text
+    monkeypatch.setattr(get_settings(), "environment", "production")
+    assert _me(shared)["features"]["replay_demo"] is False
+    r = shared.post(f"/api/v1/meetings/{meeting.json()['id']}/replay", headers=h, data={"text": "田中: こんにちは"})
+    assert r.status_code == 403
+
+
+def test_integrations_feature_follows_server_configuration(shared, monkeypatch):
+    monkeypatch.setattr(get_settings(), "zoom_client_id", "zoom-client")
+    monkeypatch.setattr(get_settings(), "zoom_client_secret", "zoom-secret")
+    assert _me(shared)["features"]["integrations"] is True

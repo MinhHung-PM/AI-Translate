@@ -11,6 +11,7 @@ import { useMeeting } from "@/components/meeting/use-meeting";
 import { api } from "@/lib/api";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { t } from "@/lib/i18n";
+import { useFeature } from "@/lib/session";
 import { setFocusMode } from "@/lib/prefs";
 import type { Language, LiveSession, TranscriptEntry } from "@/lib/types";
 
@@ -48,6 +49,7 @@ function BarButton({ on, onClick, children, label }: { on?: boolean; onClick: ()
  * Sources: live audio capture from this computer (speech-to-text with speaker separation), a real
  * platform connector (Zoom RTMS), or the replay demo (labelled DEMO). All feed the same polling endpoint. */
 export default function LivePage() {
+  const replayDemo = useFeature("replay_demo");
   const router = useRouter();
   const { id, data: meeting, reload: reloadMeeting } = useMeeting();
   const [memoBusy, setMemoBusy] = useState(false);
@@ -328,7 +330,7 @@ export default function LivePage() {
           </div>
         )}
 
-        {!ended && showTabs && (
+        {!ended && showTabs && replayDemo && (
           <div className="px-[clamp(14px,2.4vw,28px)] pt-4">
             <Tabs
               value={mode}

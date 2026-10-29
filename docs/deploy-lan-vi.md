@@ -64,6 +64,13 @@ vẫn giữ). API của site LAN chỉ mở cho máy này ở cổng 18000 (`API
 
 ## Lưu ý
 
+- **Tính năng được ẩn trên site này** (vì không thể hoạt động ở đây):
+  - **Cài đặt AI** và đăng xuất: key do máy chủ quản lý.
+  - **Tích hợp Teams/Zoom/Meet**: chỉ hiện khi máy chủ có cấu hình ứng dụng của nền tảng (`TEAMS_*`, `ZOOM_*`, `GOOGLE_*`).
+    Thu âm trên trình duyệt dùng được với mọi nền tảng họp.
+  - **Thành viên dự án**: mọi người dùng chung một tài khoản nên không có ai để thêm.
+  - **Phát lại (Demo)**: chỉ dành cho bản chạy thử, tắt ở chế độ production.
+
 - **Mọi người dùng chung một tài khoản "Nhóm dùng chung"**: ai trong mạng mở site cũng thấy và sửa
   được tất cả dự án, cuộc họp, biên bản. Chỉ dùng trong mạng công ty; không mở site ra Internet.
 - **Chi phí OpenAI/Soniox tính vào key của bạn**; xem "Chi phí & sử dụng AI". Giới hạn tần suất áp

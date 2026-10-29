@@ -58,7 +58,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
   // Shared team site (no sign-in): AI keys are managed on the server, so no AI settings / sign-out.
   const shared = !!session.features.shared_mode;
-  const manage = [...(shared ? MANAGE.filter((n) => n.id !== "settings") : MANAGE), ...(session.user.role === "admin" ? [{ id: "admin" as const, href: "/admin", label: t.nav.admin, icon: Shield }] : [])];
+  // No meeting platform configured on the server: the integrations page could not do anything.
+  const hidden = new Set<NavId>([...(shared ? ["settings" as const] : []), ...(session.features.integrations ? [] : ["integrations" as const])]);
+  const manage = [...MANAGE.filter((n) => !hidden.has(n.id)), ...(session.user.role === "admin" ? [{ id: "admin" as const, href: "/admin", label: t.nav.admin, icon: Shield }] : [])];
   const current = activeId(pathname, memoFilter);
   const liveCurrent = pathname === "/live" || /^\/meetings\/[^/]+\/live/.test(pathname);
   // The live screen runs edge to edge; every other page sits in the padded content column.

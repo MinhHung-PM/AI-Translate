@@ -9,7 +9,7 @@ from sqlalchemy.orm import contains_eager
 
 from app.api.deps import DB, Auth, AuthContext, ai_rate_limit
 from app.core.config import get_settings
-from app.core.errors import Conflict, NotFound, PayloadTooLarge, ValidationFailed
+from app.core.errors import Conflict, Forbidden, NotFound, PayloadTooLarge, ValidationFailed
 from app.integrations.models import CanonicalEvent
 from app.models import Job, LiveSession, Meeting, TranscriptEntry, TranscriptImport, Translation
 from app.models.enums import (
@@ -323,6 +323,8 @@ def start_replay(
 ) -> LiveSession:
     """Replay a transcript incrementally through the connector ingestion path.
     DEMO MODE: this is not a live meeting connection."""
+    if get_settings().environment == "production":
+        raise Forbidden("The replay demo is not available on production sites")
     meeting, access = load_meeting(db, auth.user, meeting_id, AccessLevel.contribute)
     require_edit_meeting(access, meeting, auth.user)
     existing = db.scalar(
